@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Global Reset ===== */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* body lock */
+}
+.input {
+  @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+         focus:outline-none focus:ring-2 focus:ring-indigo-500;
+}
+.textarea {
+  @apply w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500;
+}
+.card {
+  @apply bg-white p-6 rounded-xl shadow space-y-3;
+}
+.section-title {
+  @apply text-lg font-semibold;
+}
+.rule {
+  @apply text-sm text-gray-500;
+}
+
+.label {
+  @apply block text-sm font-medium text-gray-600 mb-1;
+}
+
+button {
+  all: unset;
+  cursor: pointer;
+}
+
+
+@keyframes shine {
+  0% { transform: translateX(-100%); }
+  60% { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.25s ease-out;
+}

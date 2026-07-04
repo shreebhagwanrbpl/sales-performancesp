@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "sale-performance-tracker"
+  },
+  "targets": {
+    "sale-performance-tracker": {
+      "hosting": {
+        "sales": [
+          "sale-performance-tracker"
+        ]
+      }
+    }
+  }
+}
