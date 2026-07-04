@@ -22,6 +22,7 @@ import { db, auth } from "../firebase";
 // ============================
 
 const createEmptyItem = () => ({
+  requisitionPerson:"",
   itemName: "",
   description: "",
   expiryDate: "",
@@ -177,6 +178,7 @@ const [uploading, setUploading] = useState(false);
 
     for (let item of form.items) {
       if (
+         !item.requisitionPerson.trim() ||
         !item.itemName.trim() ||
         !item.quantity ||
         !item.price ||
@@ -300,10 +302,11 @@ const filteredPurchases = purchases.filter((purchase) => {
   const creatorMatch = purchase.createdByName
     ?.toLowerCase()
     .includes(searchText);
-
-  const itemMatch = purchase.items?.some((item) =>
-    item.itemName?.toLowerCase().includes(searchText)
-  );
+const itemMatch = purchase.items?.some(
+  (item) =>
+    item.itemName?.toLowerCase().includes(searchText) ||
+    item.requisitionPerson?.toLowerCase().includes(searchText)
+);
 
   return vendorMatch || creatorMatch || itemMatch;
 });
@@ -337,7 +340,7 @@ const downloadDemoExcel = () => {
       Email: "raj@gmail.com",
       Location: "Jaipur",
       Remarks: "Demo Purchase",
-
+      "Requisition Person":  "Ajay",
       "Item Name": "Erba Kit",
       Description: "Electrolyte",
       "Expiry Date": "2026-07-15",
@@ -399,7 +402,7 @@ const importExcel = async (e) => {
       }
 
       grouped[vendor].items.push({
-
+        requisitionPerson: row["Requisition Person"],
         itemName: row["Item Name"],
         description: row["Description"],
         expiryDate: row["Expiry Date"],
@@ -616,14 +619,12 @@ Uploading Excel...
           </div>
 
           <div className="overflow-x-auto">
-
             <table className="min-w-full border">
-
               <thead className="bg-indigo-200 text-text-black">
-
                 <tr>
-
-                  <th className="p-3">Item</th>
+                  <th className="p-3">Requisition Person</th>
+                        
+                  <th>Item</th>
 
                   <th>Description</th>
 
@@ -653,6 +654,18 @@ Uploading Excel...
 
                 {form.items.map((item, index) => (
                   <tr key={index} className="border-b">
+
+                    <td className="p-2">
+  <input
+    type="text"
+    value={item.requisitionPerson}
+    onChange={(e) =>
+      handleItemChange(index, "requisitionPerson", e.target.value)
+    }
+    className="w-44 border rounded-lg px-3 py-2"
+    placeholder="Requisition Person"
+  />
+</td>
 
                     <td className="p-2">
   <input
@@ -983,6 +996,7 @@ className="bg-indigo-200 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl"
   <tr>
 
     <th className="border px-4 py-3 text-center">#</th>
+    <th className="border px-4 py-3 text-center"> Requisition Person</th>
     <th className="border px-4 py-3 text-center">Item Name</th>
     <th className="border px-4 py-3 text-center">Description</th>
     <th className="border px-4 py-3 text-center">Expiry</th>
@@ -1007,6 +1021,9 @@ className="bg-indigo-200 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl"
   <td className="border px-4 py-3 text-center font-semibold">
     {i + 1}
   </td>
+  <td className="border px-4 py-3 text-center font-medium">
+  {item.requisitionPerson}
+</td>
 
   <td className="border px-4 py-3 font-semibold">
     {item.itemName}
