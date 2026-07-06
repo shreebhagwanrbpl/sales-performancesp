@@ -169,7 +169,7 @@ export default function PurchaseForm() {
     if (
       !form.vendorName.trim() ||
       !form.contactNumber.trim() ||
-      !form.email.trim() ||
+      // !form.email.trim() ||
       !form.location.trim()
     ) {
       alert("Please fill Vendor Details.");
