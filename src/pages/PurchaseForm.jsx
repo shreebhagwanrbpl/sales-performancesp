@@ -448,31 +448,30 @@ export default function PurchaseForm() {
         const vendor = row["Vendor Name"];
 
         if (!grouped[vendor]) {
-          grouped[vendor] = {
-            vendorName: vendor,
-            contactNumber: row["Contact Number"],
-            alternateNumber: row["Alternate Number"],
-            email: row["Email"],
-            location: row["Location"],
-            remarks: row["Remarks"],
-
-            items: [],
-          };
+       grouped[vendor] = {
+      vendorName: vendor || "",
+      contactNumber: row["Contact Number"] || "",
+      alternateNumber: row["Alternate Number"] || "",
+      email: row["Email"] || "",
+      location: row["Location"] || "",
+      remarks: row["Remarks"] || "",
+      items: [],
+    };
         }
 
-        grouped[vendor].items.push({
-          requisitionPerson: row["Requisition Person"],
-          itemName: row["Item Name"],
-          description: row["Description"],
-          expiryDate: row["Expiry Date"],
-          duration: row["Duration"],
-          unit: row["Unit"],
-          hsnCode: row["HSN Code"],
-          quantity: row["MOQ"],
-          price: row["Price"],
-          discount: row["Discount"],
-          gst: row["GST"],
-        });
+    grouped[vendor].items.push({
+  requisitionPerson: row["Requisition Person"] || "",
+  itemName: row["Item Name"] || "",
+  description: row["Description"] || "",
+  expiryDate: row["Expiry Date"] || "",
+  duration: row["Duration"] || "",
+  unit: row["Unit"] || "",
+  hsnCode: row["HSN Code"] || "",
+  quantity: row["MOQ"] || "",
+  price: row["Price"] || "",
+  discount: row["Discount"] || 0,
+  gst: row["GST"] || "",
+});
       });
 
       const userRef = doc(db, "users", auth.currentUser.uid);
@@ -486,9 +485,9 @@ export default function PurchaseForm() {
           ...grouped[key],
 
           createdBy: auth.currentUser.uid,
-          createdByName: user.name,
-          createdByEmail: user.email,
-          createdRole: user.role,
+         createdByName: user?.name || "",
+        createdByEmail: user?.email || "",
+        createdRole: user?.role || "",
 
           createdAt: serverTimestamp(),
         });
