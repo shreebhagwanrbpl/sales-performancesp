@@ -26,10 +26,10 @@ import Products from "./pages/ProductWebPage";
 import ContactPageWeb from "./pages/ContactPageWeb";
 import Leave from "./pages/Leave";
 import PurchaseForm from "./pages/PurchaseForm";
+import OfficeExpense from "./pages/OfficeExpense";
 
 export default function App() {
   const role = localStorage.getItem("role") || "";
-
   return (
     <Routes>
       {/* ROOT → LOGIN */}
@@ -57,8 +57,8 @@ export default function App() {
         <Route path="employee-detail" element={<EmployeeDetails />} />
         <Route path="self-assessment" element={<SelfAssessment />} />
         <Route path="/admin/assign-tl" element={<AdminAssignTL />} />
-        
-          <Route path="/purchaseform" element={< PurchaseForm/>} />
+        <Route path="/purchaseform" element={<PurchaseForm />} />
+        <Route path="/officeexpense" element={<OfficeExpense />} />
         <Route path="reports" element={<Report />} />
         <Route
           path="/admin/excel-sales-detail"
@@ -75,7 +75,6 @@ export default function App() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/products-web" element={<Products />} />
           <Route path="/contact" element={<ContactPageWeb />} />
-
         </Route>
       </Route>
       {/* FALLBACK */}

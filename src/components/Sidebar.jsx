@@ -18,8 +18,8 @@ import logo from "../assets/logo.png";
 export default function Sidebar() {
   const { pathname } = useLocation();
   const role = localStorage.getItem("role");
-const [openWebsite, setOpenWebsite] = useState(false);
-const [openAdmin, setOpenAdmin] = useState(false);
+  const [openWebsite, setOpenWebsite] = useState(false);
+  const [openAdmin, setOpenAdmin] = useState(false);
   const isActive = (path) =>
     pathname === path
       ? "bg-indigo-50 text-indigo-600"
@@ -50,15 +50,15 @@ const [openAdmin, setOpenAdmin] = useState(false);
           </Link>
         )}
 
-       {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
-  <Link
-    to="/add-sale"
-    className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/add-sale")}`}
-  >
-    <PlusCircleIcon className="w-5 h-5" />
-    Add Sale
-  </Link>
-)}
+        {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
+          <Link
+            to="/add-sale"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/add-sale")}`}
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Sale
+          </Link>
+        )}
 
         {(role === "EMPLOYEE" || role === "TL") && (
           <>
@@ -83,19 +83,19 @@ const [openAdmin, setOpenAdmin] = useState(false);
           </>
         )}
 
-      {(role === "EMPLOYEE" || role === "ADMIN") && (
+        {(role === "EMPLOYEE" || role === "ADMIN") && (
           <>
             <Link
-          to="/leave-management"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
-            "/leave-management",
-          )}`}
-        >
-          <PlusCircleIcon className="w-5 h-5" />
-          Leave
-        </Link>
-      </>
-       )}
+              to="/leave-management"
+              className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
+                "/leave-management",
+              )}`}
+            >
+              <PlusCircleIcon className="w-5 h-5" />
+              Leave
+            </Link>
+          </>
+        )}
         {/* ================= TL + ADMIN ================= */}
         {(role === "TL" || role === "ADMIN") && (
           <>
@@ -123,7 +123,7 @@ const [openAdmin, setOpenAdmin] = useState(false);
             </Link>
           </>
         )}
-{/* 
+        {/* 
         {role === "ADMIN" && (
           <Link
             to="purchase-margin"
@@ -159,79 +159,76 @@ const [openAdmin, setOpenAdmin] = useState(false);
           </Link>
         )}
 
-      {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
-  <Link
-    to="/exsisting-customer"
-    className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/exsisting-customer")}`}
-  >
-    <ChatBubbleLeftRightIcon className="w-5 h-5" />
-    Add Existing Customer
-  </Link>
-)}
+        {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
+          <Link
+            to="/exsisting-customer"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/exsisting-customer")}`}
+          >
+            <ChatBubbleLeftRightIcon className="w-5 h-5" />
+            Add Existing Customer
+          </Link>
+        )}
 
         {/* ================= ADMIN ONLY ================= */}
-     
-{/* ================= ADMIN CONTROLS ================= */}
-{role === "ADMIN" && (
-  <div className="mt-6">
-    
-    <div
-      onClick={() => setOpenAdmin(!openAdmin)}
-      className="flex items-center justify-between px-4 py-2 text-xs uppercase text-gray-400 cursor-pointer"
-    >
-      <span>Admin Controls</span>
-      <span>{openAdmin ? "▲" : "▼"}</span>
-    </div>
 
-    {openAdmin && (
-      <div className="mt-2 space-y-1">
+        {/* ================= ADMIN CONTROLS ================= */}
+        {role === "ADMIN" && (
+          <div className="mt-6">
+            <div
+              onClick={() => setOpenAdmin(!openAdmin)}
+              className="flex items-center justify-between px-4 py-2 text-xs uppercase text-gray-400 cursor-pointer"
+            >
+              <span>Admin Controls</span>
+              <span>{openAdmin ? "▲" : "▼"}</span>
+            </div>
 
-        <Link
-          to="approve-users"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("approve-users")}`}
-        >
-          <UserPlusIcon className="w-5 h-5" />
-          User Approval
-        </Link>
+            {openAdmin && (
+              <div className="mt-2 space-y-1">
+                <Link
+                  to="approve-users"
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("approve-users")}`}
+                >
+                  <UserPlusIcon className="w-5 h-5" />
+                  User Approval
+                </Link>
 
-        <Link
-          to="/add-ctc"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/add-ctc")}`}
-        >
-          <BanknotesIcon className="w-5 h-5" />
-          Add CTC
-        </Link>
+                <Link
+                  to="/add-ctc"
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/add-ctc")}`}
+                >
+                  <BanknotesIcon className="w-5 h-5" />
+                  Add CTC
+                </Link>
 
-        <Link
-          to="/appraisal"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/appraisal")}`}
-        >
-          <ChartBarIcon className="w-5 h-5" />
-          Appraisal
-        </Link>
+                <Link
+                  to="/appraisal"
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/appraisal")}`}
+                >
+                  <ChartBarIcon className="w-5 h-5" />
+                  Appraisal
+                </Link>
 
-        <Link
-          to="/inventory"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/inventory")}`}
-        >
-          <ArchiveBoxIcon className="w-5 h-5" />
-          Inventory
-        </Link>
+                <Link
+                  to="/inventory"
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("/inventory")}`}
+                >
+                  <ArchiveBoxIcon className="w-5 h-5" />
+                  Inventory
+                </Link>
 
-        <Link
-          to="reports"
-          className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("reports")}`}
-        >
-          <UserPlusIcon className="w-5 h-5" />
-          Reports
-        </Link>
-
-      </div>
-    )}
-  </div>
-)}
+                <Link
+                  to="reports"
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive("reports")}`}
+                >
+                  <UserPlusIcon className="w-5 h-5" />
+                  Reports
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
         {/* ================= WEBSITE ================= */}
-{/* <div className="mt-6">
+        {/* <div className="mt-6">
   <div
     onClick={() => setOpenWebsite(!openWebsite)}
     className="flex items-center justify-between px-4 py-2 text-sm cursor-pointer text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -283,18 +280,29 @@ const [openAdmin, setOpenAdmin] = useState(false);
   )}
 </div> */}
 
+        {(role === "ADMIN" || role === "PURCHASING") && (
+          <Link
+            to="/purchaseform"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
+              "/purchaseform",
+            )}`}
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Purchase Entry
+          </Link>
+        )}
 
- {(role === "ADMIN" || role === "PURCHASING") && (
-  <Link
-    to="/purchaseform"
-    className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
-      "/purchaseform"
-    )}`}
-  >
-    <PlusCircleIcon className="w-5 h-5" />
-    Purchase Entry
-  </Link>
-)}
+        {(role === "ADMIN" || role === "PURCHASING") && (
+          <Link
+            to="/officeexpense"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
+              "/officeexpense",
+            )}`}
+          >
+            <BanknotesIcon className="w-5 h-5" />
+            Office Expense
+          </Link>
+        )}
       </nav>
     </aside>
   );
