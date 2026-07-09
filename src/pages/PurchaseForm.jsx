@@ -62,7 +62,8 @@ export default function PurchaseForm() {
   const [showItemModal, setShowItemModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState(emptyForm);
-
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [summarySearch, setSummarySearch] = useState("");
   const role = localStorage.getItem("role");
   const uid = auth.currentUser?.uid;
 
@@ -247,72 +248,71 @@ export default function PurchaseForm() {
   //   }
   // };
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!validateForm()) return;
+    if (!validateForm()) return;
 
-  try {
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
+    try {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
 
-    if (!userSnap.exists()) {
-      alert("User not found.");
-      return;
+      if (!userSnap.exists()) {
+        alert("User not found.");
+        return;
+      }
+
+      const userData = userSnap.data();
+
+      const purchaseData = {
+        vendorName: form.vendorName || "",
+        contactNumber: form.contactNumber || "",
+        alternateNumber: form.alternateNumber || "",
+        email: form.email || "",
+        location: form.location || "",
+        remarks: form.remarks || "",
+
+        items: form.items.map((item) => ({
+          requisitionPerson: item.requisitionPerson || "",
+          itemName: item.itemName || "",
+          description: item.description || "",
+          expiryDate: item.expiryDate || "",
+          duration: item.duration || "",
+          unit: item.unit || "",
+          hsnCode: item.hsnCode || "",
+          quantity: item.quantity || "",
+          price: item.price || "",
+          discount: item.discount || "",
+          gst: item.gst || "",
+        })),
+
+        createdBy: auth.currentUser.uid,
+        createdByName: userData?.name || "",
+        createdByEmail: userData?.email || "",
+        createdRole: userData?.role || "",
+      };
+
+      console.log("USER DATA =>", userData);
+      console.log("PURCHASE DATA =>", purchaseData);
+
+      if (editingId) {
+        await updateDoc(doc(db, "purchases", editingId), purchaseData);
+      } else {
+        await addDoc(collection(db, "purchases"), {
+          ...purchaseData,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      alert("Purchase Saved Successfully");
+
+      await loadPurchases();
+      resetForm();
+      setOpenForm(false);
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
     }
-
-    const userData = userSnap.data();
-
-    const purchaseData = {
-      vendorName: form.vendorName || "",
-      contactNumber: form.contactNumber || "",
-      alternateNumber: form.alternateNumber || "",
-      email: form.email || "",
-      location: form.location || "",
-      remarks: form.remarks || "",
-
-      items: form.items.map((item) => ({
-        requisitionPerson: item.requisitionPerson || "",
-        itemName: item.itemName || "",
-        description: item.description || "",
-        expiryDate: item.expiryDate || "",
-        duration: item.duration || "",
-        unit: item.unit || "",
-        hsnCode: item.hsnCode || "",
-        quantity: item.quantity || "",
-        price: item.price || "",
-        discount: item.discount || "",
-        gst: item.gst || "",
-      })),
-
-      createdBy: auth.currentUser.uid,
-      createdByName: userData?.name || "",
-      createdByEmail: userData?.email || "",
-      createdRole: userData?.role || "",
-    };
-
-    console.log("USER DATA =>", userData);
-    console.log("PURCHASE DATA =>", purchaseData);
-
-    if (editingId) {
-      await updateDoc(doc(db, "purchases", editingId), purchaseData);
-    } else {
-      await addDoc(collection(db, "purchases"), {
-        ...purchaseData,
-        createdAt: serverTimestamp(),
-      });
-    }
-
-    alert("Purchase Saved Successfully");
-
-    await loadPurchases();
-    resetForm();
-    setOpenForm(false);
-
-  } catch (err) {
-    console.error(err);
-    alert(err.message);
-  }
-};
+  };
 
   // ============================
   // DELETE
@@ -393,6 +393,39 @@ export default function PurchaseForm() {
       return total + amount;
     }, 0);
   };
+  const summaryData = (() => {
+    const grouped = {};
+
+    purchases.forEach((purchase) => {
+      const vendor = purchase.vendorName || "Unknown Vendor";
+
+      const date =
+        purchase.createdAt?.toDate?.().toLocaleDateString("en-IN") || "-";
+
+      (purchase.items || []).forEach((item) => {
+        const product = (item.itemName || "").trim();
+
+        if (!product) return;
+
+        if (!grouped[product]) {
+          grouped[product] = [];
+        }
+
+        grouped[product].push({
+          vendor,
+          product,
+          date,
+          price: Number(item.price || 0),
+        });
+      });
+    });
+
+    Object.keys(grouped).forEach((key) => {
+      grouped[key].sort((a, b) => a.price - b.price);
+    });
+
+    return grouped;
+  })();
 
   const downloadDemoExcel = () => {
     const demo = [
@@ -448,30 +481,30 @@ export default function PurchaseForm() {
         const vendor = row["Vendor Name"];
 
         if (!grouped[vendor]) {
-       grouped[vendor] = {
-      vendorName: vendor || "",
-      contactNumber: row["Contact Number"] || "",
-      alternateNumber: row["Alternate Number"] || "",
-      email: row["Email"] || "",
-      location: row["Location"] || "",
-      remarks: row["Remarks"] || "",
-      items: [],
-    };
+          grouped[vendor] = {
+            vendorName: vendor || "",
+            contactNumber: row["Contact Number"] || "",
+            alternateNumber: row["Alternate Number"] || "",
+            email: row["Email"] || "",
+            location: row["Location"] || "",
+            remarks: row["Remarks"] || "",
+            items: [],
+          };
         }
 
-    grouped[vendor].items.push({
-  requisitionPerson: row["Requisition Person"] || "",
-  itemName: row["Item Name"] || "",
-  description: row["Description"] || "",
-  expiryDate: row["Expiry Date"] || "",
-  duration: row["Duration"] || "",
-  unit: row["Unit"] || "",
-  hsnCode: row["HSN Code"] || "",
-  quantity: row["MOQ"] || "",
-  price: row["Price"] || "",
-  discount: row["Discount"] || 0,
-  gst: row["GST"] || "",
-});
+        grouped[vendor].items.push({
+          requisitionPerson: row["Requisition Person"] || "",
+          itemName: row["Item Name"] || "",
+          description: row["Description"] || "",
+          expiryDate: row["Expiry Date"] || "",
+          duration: row["Duration"] || "",
+          unit: row["Unit"] || "",
+          hsnCode: row["HSN Code"] || "",
+          quantity: row["MOQ"] || "",
+          price: row["Price"] || "",
+          discount: row["Discount"] || 0,
+          gst: row["GST"] || "",
+        });
       });
 
       const userRef = doc(db, "users", auth.currentUser.uid);
@@ -485,9 +518,9 @@ export default function PurchaseForm() {
           ...grouped[key],
 
           createdBy: auth.currentUser.uid,
-         createdByName: user?.name || "",
-        createdByEmail: user?.email || "",
-        createdRole: user?.role || "",
+          createdByName: user?.name || "",
+          createdByEmail: user?.email || "",
+          createdRole: user?.role || "",
 
           createdAt: serverTimestamp(),
         });
@@ -504,6 +537,10 @@ export default function PurchaseForm() {
 
     setUploading(false);
   };
+
+  const filteredSummary = Object.entries(summaryData).filter(([product]) =>
+    product.toLowerCase().includes(summarySearch.toLowerCase()),
+  );
 
   return (
     <>
@@ -619,6 +656,14 @@ export default function PurchaseForm() {
                     onChange={importExcel}
                   />
                 </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSummaryModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-semibold transition"
+                >
+                  📊 Summary
+                </button>
 
                 {uploading && (
                   <div className="mt-4">
@@ -1177,6 +1222,225 @@ export default function PurchaseForm() {
           )}
         </div>
       </div>
+
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-center items-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-7xl h-[90vh] shadow-2xl overflow-hidden">
+            {/* Header */}
+
+            <div className="bg-indigo-600 text-white px-8 py-6 flex justify-between items-center">
+              <div>
+                <h2 className="text-3xl font-bold">Purchase Price Summary</h2>
+
+                <p className="opacity-90 mt-1">
+                  Compare quotations from all vendors.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowSummaryModal(false)}
+                className="text-3xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Search */}
+
+            <div className="p-6 border-b">
+              <input
+                type="text"
+                placeholder="Search Product..."
+                value={summarySearch}
+                onChange={(e) => setSummarySearch(e.target.value)}
+                className="w-full border rounded-xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Cards */}
+
+            {/* <div className="grid grid-cols-4 gap-5 p-6">
+              <div className="rounded-2xl bg-green-50 border border-green-200 p-5">
+                <p className="text-gray-500">Total Vendors</p>
+
+                <h2 className="text-3xl font-bold mt-2">
+                  {new Set(purchases.map((p) => p.vendorName)).size}
+                </h2>
+              </div>
+
+              <div className="rounded-2xl bg-blue-50 border border-blue-200 p-5">
+                <p className="text-gray-500">Products Compared</p>
+
+                <h2 className="text-3xl font-bold mt-2">
+                  {Object.keys(summaryData).length}
+                </h2>
+              </div>
+
+              <div className="rounded-2xl bg-yellow-50 border border-yellow-200 p-5">
+                <p className="text-gray-500">Lowest Price</p>
+                <h2 className="text-3xl font-bold mt-2">
+                  {Object.values(summaryData).length > 0
+                    ? `₹${Math.min(
+                        ...Object.values(summaryData)
+                          .flat()
+                          .map((x) => x.price),
+                      ).toLocaleString()}`
+                    : "₹0"}
+                </h2>
+              </div>
+
+              <div className="rounded-2xl bg-red-50 border border-red-200 p-5">
+                <p className="text-gray-500">Highest Price</p>
+
+                <h2 className="text-3xl font-bold mt-2">
+                  {Object.values(summaryData).length > 0
+                    ? `₹${Math.max(
+                        ...Object.values(summaryData)
+                          .flat()
+                          .map((x) => x.price),
+                      ).toLocaleString()}`
+                    : "₹0"}
+                </h2>
+              </div>
+            </div> */}
+
+            {/* Table */}
+
+           <div className="px-6 pb-6 overflow-y-auto h-[55vh]">
+
+{filteredSummary.length === 0 ? (
+
+<div className="text-center py-20 text-gray-400">
+No Summary Found
+</div>
+
+) : (
+
+filteredSummary.map(([product, vendors])=>{
+
+const lowest = vendors[0]?.price || 0;
+const highest = vendors[vendors.length-1]?.price || 0;
+
+return(
+
+<div key={product} className="mb-8">
+
+<div className="bg-blue-50 border rounded-xl px-5 py-3 mb-3">
+
+<h2 className="text-xl font-bold">
+
+Product :
+<span className="text-blue-700 ml-2">
+{product}
+</span>
+
+</h2>
+
+</div>
+
+<table className="w-full border">
+
+<thead className="bg-gray-100">
+
+<tr>
+
+<th className="p-3 border">#</th>
+<th className="p-3 border">Vendor</th>
+<th className="p-3 border">Date</th>
+<th className="p-3 border">Price</th>
+<th className="p-3 border">Difference</th>
+<th className="p-3 border">Status</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+{vendors.map((vendor,index)=>{
+
+let status="Higher";
+let bg="";
+
+if(vendor.price===lowest){
+status="Lowest";
+bg="bg-green-50";
+}
+
+if(vendor.price===highest && highest!==lowest){
+status="Highest";
+bg="bg-red-50";
+}
+
+return(
+
+<tr key={index} className={bg}>
+
+<td className="border p-3 text-center">
+{index+1}
+</td>
+
+<td className="border p-3">
+{vendor.vendor}
+</td>
+
+<td className="border p-3 text-center">
+{vendor.date}
+</td>
+
+<td className="border p-3 text-center font-bold text-green-600">
+₹ {vendor.price.toLocaleString()}
+</td>
+
+<td className="border p-3 text-center">
+
+{index===0
+? "-"
+: `+ ₹${(vendor.price-lowest).toLocaleString()}`}
+
+</td>
+
+<td className="border p-3 text-center">
+
+<span
+className={`px-3 py-1 rounded-full text-xs font-bold ${
+status==="Lowest"
+?"bg-green-100 text-green-700"
+:status==="Highest"
+?"bg-red-100 text-red-700"
+:"bg-yellow-100 text-yellow-700"
+}`}
+>
+
+{status}
+
+</span>
+
+</td>
+
+</tr>
+
+)
+
+})}
+
+</tbody>
+
+</table>
+
+</div>
+
+)
+
+})
+
+)}
+
+</div>
+            
+          </div>
+        </div>
+      )}
     </>
   );
 }
