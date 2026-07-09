@@ -555,15 +555,65 @@ export default function PurchaseForm() {
           onClick={() => setOpenForm(!openForm)}
           className="cursor-pointer flex justify-between items-center"
         >
-          <div>
-            <h2 className="text-3xl font-bold text-gray-800">
-              {editingId ? "Update Purchase" : "New Purchase"}
-            </h2>
+         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-5 mt-10 mb-6">
 
-            <p className="text-gray-500 mt-1">
-              Click to {openForm ? "collapse" : "expand"} purchase form
-            </p>
-          </div>
+  {/* Left Side */}
+  <div>
+    <h2 className="text-3xl font-bold text-gray-800">
+      {editingId ? "Update Purchase" : "New Purchase"}
+    </h2>
+
+    <p className="text-gray-500 mt-1">
+      Click to {openForm ? "Collapse" : "Expand"} Purchase Form
+    </p>
+  </div>
+
+  {/* Right Side */}
+  <div className="flex flex-wrap gap-3 ml-16">
+
+    <button
+      type="button"
+      onClick={downloadDemoExcel}
+      className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-xl font-medium transition"
+    >
+      📥 Download Demo
+    </button>
+
+    <label className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2 rounded-xl cursor-pointer font-medium transition">
+      📤 Import Excel
+
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        className="hidden"
+        onChange={importExcel}
+      />
+    </label>
+
+    <button
+      type="button"
+      onClick={() => setShowSummaryModal(true)}
+      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-medium transition"
+    >
+      📊 Summary
+    </button>
+
+  </div>
+
+</div>
+
+{/* Upload Progress */}
+{uploading && (
+  <div className="mb-6">
+    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+      <div className="bg-indigo-600 h-3 w-full animate-pulse"></div>
+    </div>
+
+    <p className="text-sm text-indigo-600 mt-2">
+      Uploading Excel...
+    </p>
+  </div>
+)}
 
           <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-3xl text-indigo-700">
             {openForm ? "−" : "+"}
@@ -638,7 +688,7 @@ export default function PurchaseForm() {
 
             <div className="flex justify-between items-center mt-10 mb-4">
               <h3 className="text-xl font-bold">Purchase Items</h3>
-              <div className="flex gap-3">
+              {/* <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={downloadDemoExcel}
@@ -676,7 +726,7 @@ export default function PurchaseForm() {
                     </p>
                   </div>
                 )}
-              </div>
+              </div> */}
               <button
                 type="button"
                 onClick={addItem}

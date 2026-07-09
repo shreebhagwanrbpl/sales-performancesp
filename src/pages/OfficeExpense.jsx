@@ -22,6 +22,8 @@ import {
   FaPlus,
 } from "react-icons/fa";
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 export default function OfficeExpense() {
   const emptyForm = {
     expenseDate: new Date().toISOString().slice(0, 10),
@@ -30,7 +32,7 @@ export default function OfficeExpense() {
     amount: "",
     paymentMode: "",
     vendor: "",
-    invoiceNo: "",
+    // invoiceNo: "",
     employee: "",
     description: "",
   };
@@ -39,11 +41,12 @@ export default function OfficeExpense() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editId, setEditId] = useState(null);
-const [openForm, setOpenForm] = useState(false);
+  const [openForm, setOpenForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [file, setFile] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-
+  const storage = getStorage();
   const expenseRef = collection(db, "officeExpenses");
 
   const categories = [
@@ -82,8 +85,7 @@ const [openForm, setOpenForm] = useState(false);
 
     data.sort(
       (a, b) =>
-        new Date(b.expenseDate).getTime() -
-        new Date(a.expenseDate).getTime()
+        new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime(),
     );
 
     setExpenses(data);
@@ -105,12 +107,7 @@ const [openForm, setOpenForm] = useState(false);
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (
-      !form.expenseDate ||
-      !form.category ||
-      !form.title ||
-      !form.amount
-    ) {
+    if (!form.expenseDate || !form.category || !form.title || !form.amount) {
       alert("Please fill all required fields.");
       return;
     }
@@ -118,10 +115,34 @@ const [openForm, setOpenForm] = useState(false);
     setLoading(true);
 
     try {
+      let fileURL = "";
+      let fileName = "";
+      let fileType = "";
+      let filePath = "";
+
+      if (file) {
+        const storageRef = ref(
+          storage,
+          `office-expenses/${Date.now()}_${file.name}`,
+        );
+
+        await uploadBytes(storageRef, file);
+
+        fileURL = await getDownloadURL(storageRef);
+
+        fileName = file.name;
+        fileType = file.type;
+        filePath = storageRef.fullPath;
+      }
+
       if (editId) {
         await updateDoc(doc(db, "officeExpenses", editId), {
           ...form,
           amount: Number(form.amount),
+          fileURL,
+          fileName,
+          fileType,
+          filePath,
         });
 
         alert("Expense Updated Successfully");
@@ -129,6 +150,11 @@ const [openForm, setOpenForm] = useState(false);
         await addDoc(expenseRef, {
           ...form,
           amount: Number(form.amount),
+          fileURL,
+          fileName,
+          fileType,
+          filePath,
+
           createdAt: serverTimestamp(),
         });
 
@@ -176,9 +202,7 @@ const [openForm, setOpenForm] = useState(false);
         ? item.category === categoryFilter
         : true;
 
-      const dateMatch = dateFilter
-        ? item.expenseDate === dateFilter
-        : true;
+      const dateMatch = dateFilter ? item.expenseDate === dateFilter : true;
 
       return searchMatch && categoryMatch && dateMatch;
     });
@@ -186,609 +210,478 @@ const [openForm, setOpenForm] = useState(false);
 
   const totalExpense = filteredExpenses.reduce(
     (sum, item) => sum + Number(item.amount || 0),
-    0
+    0,
   );
 
   const todayExpense = filteredExpenses
     .filter(
-      (item) =>
-        item.expenseDate === new Date().toISOString().slice(0, 10)
+      (item) => item.expenseDate === new Date().toISOString().slice(0, 10),
     )
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   const thisMonthExpense = filteredExpenses
     .filter((item) =>
-      item.expenseDate.startsWith(
-        new Date().toISOString().slice(0, 7)
-      )
+      item.expenseDate.startsWith(new Date().toISOString().slice(0, 7)),
     )
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   return (
     <>
-    <div className="min-h-screen bg-slate-100 p-6">
+      <div className="min-h-screen bg-slate-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-gradient-to-r from-blue-700 to-indigo-700 rounded-3xl p-8 text-white shadow-xl">
+            <h1 className="text-4xl font-bold">Office Expense Management</h1>
 
-      <div className="max-w-7xl mx-auto">
-
-        <div className="bg-gradient-to-r from-blue-700 to-indigo-700 rounded-3xl p-8 text-white shadow-xl">
-
-          <h1 className="text-4xl font-bold">
-            Office Expense Management
-          </h1>
-
-          <p className="opacity-90 mt-2">
-            Track Office Expenses with Complete History
-          </p>
-
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6 mt-8">
-
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-
-            <div className="flex justify-between">
-
-              <div>
-
-                <p className="text-gray-500">
-                  Total Expense
-                </p>
-
-                <h2 className="text-3xl font-bold mt-2">
-                  ₹ {totalExpense.toLocaleString()}
-                </h2>
-
-              </div>
-
-              <FaWallet className="text-5xl text-blue-600" />
-
-            </div>
-
+            <p className="opacity-90 mt-2">
+              Track Office Expenses with Complete History
+            </p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6">
+          <div className="grid lg:grid-cols-3 gap-6 mt-8">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-gray-500">Total Expense</p>
 
-            <div className="flex justify-between">
+                  <h2 className="text-3xl font-bold mt-2">
+                    ₹ {totalExpense.toLocaleString()}
+                  </h2>
+                </div>
 
-              <div>
-
-                <p className="text-gray-500">
-                  Today's Expense
-                </p>
-
-                <h2 className="text-3xl font-bold mt-2">
-                  ₹ {todayExpense.toLocaleString()}
-                </h2>
-
+                <FaWallet className="text-5xl text-blue-600" />
               </div>
-
-              <FaMoneyBillWave className="text-5xl text-green-600" />
-
             </div>
 
-          </div>
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-gray-500">Today's Expense</p>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6">
+                  <h2 className="text-3xl font-bold mt-2">
+                    ₹ {todayExpense.toLocaleString()}
+                  </h2>
+                </div>
 
-            <div className="flex justify-between">
-
-              <div>
-
-                <p className="text-gray-500">
-                  This Month
-                </p>
-
-                <h2 className="text-3xl font-bold mt-2">
-                  ₹ {thisMonthExpense.toLocaleString()}
-                </h2>
-
+                <FaMoneyBillWave className="text-5xl text-green-600" />
               </div>
-
-              <FaFileInvoiceDollar className="text-5xl text-red-600" />
-
             </div>
 
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="flex justify-between">
+                <div>
+                  <p className="text-gray-500">This Month</p>
+
+                  <h2 className="text-3xl font-bold mt-2">
+                    ₹ {thisMonthExpense.toLocaleString()}
+                  </h2>
+                </div>
+
+                <FaFileInvoiceDollar className="text-5xl text-red-600" />
+              </div>
+            </div>
           </div>
 
-        </div>
-        
+          <div className="bg-white rounded-3xl shadow-xl p-8 mt-8">
+            <div
+              onClick={() => setOpenForm(!openForm)}
+              className="flex justify-between items-center cursor-pointer"
+            >
+              <div>
+                <h2 className="text-2xl font-bold">
+                  {editId ? "Update Expense" : "New Expense"}
+                </h2>
 
+                <p className="text-gray-500 mt-1">
+                  Click to {openForm ? "Collapse" : "Expand"} Form
+                </p>
+              </div>
 
-        <div className="bg-white rounded-3xl shadow-xl p-8 mt-8">
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-3xl text-blue-700">
+                {openForm ? "−" : "+"}
+              </div>
+            </div>
 
-  <div
-    onClick={() => setOpenForm(!openForm)}
-    className="flex justify-between items-center cursor-pointer"
-  >
-    <div>
-      <h2 className="text-2xl font-bold">
-        {editId ? "Update Expense" : "New Expense"}
-      </h2>
-
-      <p className="text-gray-500 mt-1">
-        Click to {openForm ? "Collapse" : "Expand"} Form
-      </p>
-    </div>
-
-    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-3xl text-blue-700">
-      {openForm ? "−" : "+"}
-    </div>
-  </div>
-
-  {openForm && (
-
-    <form
-      onSubmit={handleSubmit}
-      className="mt-8"
-    >
-
-        {/* <form
+            {openForm && (
+              <form onSubmit={handleSubmit} className="mt-8">
+                {/* <form
           onSubmit={handleSubmit}
           className="bg-white rounded-3xl shadow-xl p-8 mt-8"
         > */}
 
-          <div className="flex items-center gap-3 mb-8">
+                <div className="flex items-center gap-3 mb-8">
+                  <FaPlus className="text-blue-700 text-2xl" />
 
-            <FaPlus className="text-blue-700 text-2xl" />
+                  <h2 className="text-2xl font-bold">Office Expense Form</h2>
+                </div>
 
-            <h2 className="text-2xl font-bold">
-              Office Expense Form
-            </h2>
+                <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="font-semibold">Expense Date</label>
 
-          </div>
+                    <input
+                      type="date"
+                      name="expenseDate"
+                      value={form.expenseDate}
+                      onChange={handleChange}
+                      className="w-full mt-2 border rounded-xl p-3"
+                    />
+                  </div>
 
-          <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="font-semibold">Expense Category</label>
 
-            <div>
+                    <select
+                      name="category"
+                      value={form.category}
+                      onChange={handleChange}
+                      className="w-full mt-2 border rounded-xl p-3"
+                    >
+                      <option value="">Select Category</option>
 
-              <label className="font-semibold">
-                Expense Date
-              </label>
+                      {categories.map((cat) => (
+                        <option key={cat}>{cat}</option>
+                      ))}
 
-              <input
-                type="date"
-                name="expenseDate"
-                value={form.expenseDate}
-                onChange={handleChange}
-                className="w-full mt-2 border rounded-xl p-3"
-              />
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            </div>
+                  <div>
+                    <label className="font-semibold">Expense Title</label>
 
-            <div>
+                    <input
+                      type="text"
+                      name="title"
+                      value={form.title}
+                      onChange={handleChange}
+                      placeholder="Expense Title"
+                      className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
-              <label className="font-semibold">
-                Expense Category
-              </label>
+                  <div>
+                    <label className="font-semibold">Amount</label>
 
-              <select
-                name="category"
-                value={form.category}
-                onChange={handleChange}
-                className="w-full mt-2 border rounded-xl p-3"
-              >
+                    <input
+                      type="number"
+                      name="amount"
+                      value={form.amount}
+                      onChange={handleChange}
+                      placeholder="₹ Amount"
+                      className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
-                <option value="">
-                  Select Category
-                </option>
+                  <div>
+                    <label className="font-semibold">Payment Mode</label>
 
-                {categories.map((cat) => (
-                  <option key={cat}>
-                    {cat}
-                  </option>
-                ))}
+                    <select
+                      name="paymentMode"
+                      value={form.paymentMode}
+                      onChange={handleChange}
+                      className="w-full mt-2 border rounded-xl p-3"
+                    >
+                      <option value="">Select Payment</option>
 
-                                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
+                      {paymentModes.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            </div>
+                  <div>
+                    <label className="font-semibold">Vendor Name</label>
 
-            <div>
+                    <input
+                      type="text"
+                      name="vendor"
+                      value={form.vendor}
+                      onChange={handleChange}
+                      placeholder="Vendor Name"
+                      className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
-              <label className="font-semibold">
-                Expense Title
-              </label>
+                  {/* <div>
+                    <label className="font-semibold">Invoice No.</label>
 
-              <input
-                type="text"
-                name="title"
-                value={form.title}
-                onChange={handleChange}
-                placeholder="Expense Title"
-                className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-              />
+                    <input
+                      type="text"
+                      name="invoiceNo"
+                      value={form.invoiceNo}
+                      onChange={handleChange}
+                      placeholder="Invoice Number"
+                      className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div> */}
 
-            </div>
+                  <div>
+                    <label className="font-semibold">Employee Name</label>
 
-            <div>
+                    <input
+                      type="text"
+                      name="employee"
+                      value={form.employee}
+                      onChange={handleChange}
+                      placeholder="Employee Name"
+                      className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
 
-              <label className="font-semibold">
-                Amount
-              </label>
+                <div className="mt-6">
+                  <label className="font-semibold">Description</label>
 
-              <input
-                type="number"
-                name="amount"
-                value={form.amount}
-                onChange={handleChange}
-                placeholder="₹ Amount"
-                className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-              />
+                  <textarea
+                    rows="4"
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    placeholder="Expense Description..."
+                    className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold">Upload Invoice</label>
 
-            </div>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                    onChange={(e) => setFile(e.target.files[0])}
+                    className="w-full mt-2 border rounded-xl p-3"
+                  />
+                </div>
 
-            <div>
+                <div className="flex gap-4 mt-8">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-blue-700 hover:bg-blue-800 text-white px-8 py-3 rounded-xl flex items-center gap-3"
+                  >
+                    <FaSave />
 
-              <label className="font-semibold">
-                Payment Mode
-              </label>
+                    {editId ? "Update Expense" : "Save Expense"}
+                  </button>
 
-              <select
-                name="paymentMode"
-                value={form.paymentMode}
-                onChange={handleChange}
-                className="w-full mt-2 border rounded-xl p-3"
-              >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(emptyForm);
+                      setEditId(null);
+                    }}
+                    className="bg-gray-200 hover:bg-gray-300 px-8 py-3 rounded-xl"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </form>
+            )}
 
-                <option value="">
-                  Select Payment
-                </option>
+            <div className="bg-white rounded-3xl shadow-xl p-6 mt-8">
+              <div className="flex flex-wrap gap-4 items-center justify-between">
+                <h2 className="text-2xl font-bold">Expense Records</h2>
 
-                {paymentModes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode}
-                  </option>
-                ))}
+                <div className="flex flex-wrap gap-3">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-4 text-gray-500" />
 
-              </select>
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="border rounded-xl pl-10 pr-4 py-3"
+                    />
+                  </div>
 
-            </div>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="border rounded-xl px-4 py-3"
+                  >
+                    <option value="">All Categories</option>
 
-            <div>
+                    {categories.map((cat) => (
+                      <option key={cat}>{cat}</option>
+                    ))}
+                  </select>
 
-              <label className="font-semibold">
-                Vendor Name
-              </label>
-
-              <input
-                type="text"
-                name="vendor"
-                value={form.vendor}
-                onChange={handleChange}
-                placeholder="Vendor Name"
-                className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-            </div>
-
-            <div>
-
-              <label className="font-semibold">
-                Invoice No.
-              </label>
-
-              <input
-                type="text"
-                name="invoiceNo"
-                value={form.invoiceNo}
-                onChange={handleChange}
-                placeholder="Invoice Number"
-                className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-            </div>
-
-            <div>
-
-              <label className="font-semibold">
-                Employee Name
-              </label>
-
-              <input
-                type="text"
-                name="employee"
-                value={form.employee}
-                onChange={handleChange}
-                placeholder="Employee Name"
-                className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-            </div>
-
-          </div>
-
-          <div className="mt-6">
-
-            <label className="font-semibold">
-              Description
-            </label>
-
-            <textarea
-              rows="4"
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              placeholder="Expense Description..."
-              className="w-full mt-2 border rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-
-          </div>
-
-          <div className="flex gap-4 mt-8">
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-blue-700 hover:bg-blue-800 text-white px-8 py-3 rounded-xl flex items-center gap-3"
-            >
-
-              <FaSave />
-
-              {editId ? "Update Expense" : "Save Expense"}
-
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setForm(emptyForm);
-                setEditId(null);
-              }}
-              className="bg-gray-200 hover:bg-gray-300 px-8 py-3 rounded-xl"
-            >
-              Reset
-            </button>
-
-          </div>
-
-        </form>
-        )}
-
-        <div className="bg-white rounded-3xl shadow-xl p-6 mt-8">
-
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-
-            <h2 className="text-2xl font-bold">
-              Expense Records
-            </h2>
-
-            <div className="flex flex-wrap gap-3">
-
-              <div className="relative">
-
-                <FaSearch className="absolute left-3 top-4 text-gray-500" />
-
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={search}
-                  onChange={(e) =>
-                    setSearch(e.target.value)
-                  }
-                  className="border rounded-xl pl-10 pr-4 py-3"
-                />
-
+                  <input
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="border rounded-xl px-4 py-3"
+                  />
+                </div>
               </div>
 
-              <select
-                value={categoryFilter}
-                onChange={(e) =>
-                  setCategoryFilter(e.target.value)
-                }
-                className="border rounded-xl px-4 py-3"
-              >
+              <div className="overflow-x-auto mt-8">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-blue-700 text-white">
+                      <th className="p-4">#</th>
+                      <th className="p-4">Date</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4">Title</th>
+                      <th className="p-4">Vendor</th>
+                      {/* <th className="p-4">Invoice</th> */}
+                      <th className="p-4">Payment</th>
+                      <th className="p-4">Employee</th>
+                      <th className="p-4">Amount</th>
+                      <th className="p-4">Attachment</th>
+                      <th className="p-4">Action</th>
+                    </tr>
+                  </thead>
 
-                <option value="">
-                  All Categories
-                </option>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td
+                          colSpan="10"
+                          className="text-center py-12 text-gray-500 text-lg"
+                        >
+                          Loading Expenses...
+                        </td>
+                      </tr>
+                    ) : filteredExpenses.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan="10"
+                          className="text-center py-12 text-gray-400 text-lg"
+                        >
+                          No Expense Found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredExpenses.map((item, index) => (
+                        <tr
+                          key={item.id}
+                          className="border-b hover:bg-slate-50 transition"
+                        >
+                          <td className="p-4 font-semibold">{index + 1}</td>
 
-                {categories.map((cat) => (
-                  <option key={cat}>
-                    {cat}
-                  </option>
-                ))}
+                          <td className="p-4">{item.expenseDate}</td>
 
-              </select>
+                          <td className="p-4">
+                            <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
+                              {item.category}
+                            </span>
+                          </td>
 
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) =>
-                  setDateFilter(e.target.value)
-                }
-                className="border rounded-xl px-4 py-3"
-              />
+                          <td className="p-4 font-medium">{item.title}</td>
 
-            </div>
+                          <td className="p-4">{item.vendor || "-"}</td>
 
-          </div>
+                          {/* <td className="p-4">{item.invoiceNo || "-"}</td> */}
 
-          <div className="overflow-x-auto mt-8">
-
-            <table className="w-full border-collapse">
-
-              <thead>
-
-                <tr className="bg-blue-700 text-white">
-
-                  <th className="p-4">#</th>
-                  <th className="p-4">Date</th>
-                  <th className="p-4">Category</th>
-                  <th className="p-4">Title</th>
-                  <th className="p-4">Vendor</th>
-                  <th className="p-4">Invoice</th>
-                  <th className="p-4">Payment</th>
-                  <th className="p-4">Employee</th>
-                  <th className="p-4">Amount</th>
-                  <th className="p-4">Action</th>
-
-                </tr>
-
-              </thead>
-
-           
-
-                              <tbody>
-
-                {loading ? (
-
-                  <tr>
-
-                    <td
-                      colSpan="10"
-                      className="text-center py-12 text-gray-500 text-lg"
-                    >
-                      Loading Expenses...
-                    </td>
-
-                  </tr>
-
-                ) : filteredExpenses.length === 0 ? (
-
-                  <tr>
-
-                    <td
-                      colSpan="10"
-                      className="text-center py-12 text-gray-400 text-lg"
-                    >
-                      No Expense Found
-                    </td>
-
-                  </tr>
-
-                ) : (
-
-                  filteredExpenses.map((item, index) => (
-
-                    <tr
-                      key={item.id}
-                      className="border-b hover:bg-slate-50 transition"
-                    >
-
-                      <td className="p-4 font-semibold">
-                        {index + 1}
-                      </td>
-
-                      <td className="p-4">
-                        {item.expenseDate}
-                      </td>
-
-                      <td className="p-4">
-                        <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
-                          {item.category}
-                        </span>
-                      </td>
-
-                      <td className="p-4 font-medium">
-                        {item.title}
-                      </td>
-
-                      <td className="p-4">
-                        {item.vendor || "-"}
-                      </td>
-
-                      <td className="p-4">
-                        {item.invoiceNo || "-"}
-                      </td>
-
-                      <td className="p-4">
-
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium
+                          <td className="p-4">
+                            <span
+                              className={`px-3 py-1 rounded-full text-sm font-medium
 
                           ${
                             item.paymentMode === "Cash"
                               ? "bg-yellow-100 text-yellow-700"
-
                               : item.paymentMode === "UPI"
-                              ? "bg-green-100 text-green-700"
-
-                              : item.paymentMode === "Bank Transfer"
-                              ? "bg-blue-100 text-blue-700"
-
-                              : item.paymentMode === "Credit Card"
-                              ? "bg-purple-100 text-purple-700"
-
-                              : item.paymentMode === "Debit Card"
-                              ? "bg-pink-100 text-pink-700"
-
-                              : "bg-gray-100 text-gray-700"
+                                ? "bg-green-100 text-green-700"
+                                : item.paymentMode === "Bank Transfer"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : item.paymentMode === "Credit Card"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : item.paymentMode === "Debit Card"
+                                      ? "bg-pink-100 text-pink-700"
+                                      : "bg-gray-100 text-gray-700"
                           }
 
                         `}
-                        >
+                            >
+                              {item.paymentMode}
+                            </span>
+                          </td>
 
-                          {item.paymentMode}
+                          <td className="p-4">{item.employee || "-"}</td>
 
-                        </span>
+                          <td className="p-4">
+                            <span className="font-bold text-green-700 text-lg">
+                              ₹ {Number(item.amount).toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            {!item.fileURL ? (
+                              <span className="text-gray-400">
+                                No Attachment
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                {item.fileType?.startsWith("image/") ? (
+                                  <a
+                                    href={item.fileURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    <img
+                                      src={item.fileURL}
+                                      alt={item.fileName}
+                                      className="w-14 h-14 rounded-lg border object-cover"
+                                    />
+                                  </a>
+                                ) : item.fileType === "application/pdf" ? (
+                                  <span className="text-red-600 text-3xl">
+                                    📄
+                                  </span>
+                                ) : (
+                                  <span className="text-blue-600 text-3xl">
+                                    📎
+                                  </span>
+                                )}
 
-                      </td>
+                                <div>
+                                  <p className="font-medium">{item.fileName}</p>
 
-                      <td className="p-4">
-                        {item.employee || "-"}
-                      </td>
+                                  <a
+                                    href={item.fileURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 text-sm underline"
+                                  >
+                                    Open
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => handleEdit(item)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl"
+                              >
+                                <FaEdit />
+                              </button>
 
-                      <td className="p-4">
-
-                        <span className="font-bold text-green-700 text-lg">
-
-                          ₹ {Number(item.amount).toLocaleString()}
-
-                        </span>
-
-                      </td>
-
-                      <td className="p-4">
-
-                        <div className="flex gap-3">
-
-                          <button
-                            onClick={() => handleEdit(item)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl"
-                          >
-
-                            <FaEdit />
-
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              handleDelete(item.id)
-                            }
-                            className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl"
-                          >
-
-                            <FaTrash />
-
-                          </button>
-
-                        </div>
-
-                      </td>
-
-                    </tr>
-
-                  ))
-
-                )}
-
-              </tbody>
-
-            </table>
-
+                              <button
+                                onClick={() => handleDelete(item.id)}
+                                className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl"
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-
         </div>
-
       </div>
-
-    </div>
-    </div>
-</>
+    </>
   );
 }
-
