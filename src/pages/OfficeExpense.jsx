@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef  } from "react";
 import {
   collection,
   addDoc,
@@ -8,7 +8,8 @@ import {
   doc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../firebase";
 import {
   FaMoneyBillWave,
   FaSave,
@@ -21,9 +22,6 @@ import {
   FaFileInvoiceDollar,
   FaPlus,
 } from "react-icons/fa";
-
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
 export default function OfficeExpense() {
   const emptyForm = {
     expenseDate: new Date().toISOString().slice(0, 10),
@@ -37,6 +35,7 @@ export default function OfficeExpense() {
     description: "",
   };
 
+const fileInputRef = useRef(null);
   const [form, setForm] = useState(emptyForm);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +45,6 @@ export default function OfficeExpense() {
   const [file, setFile] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const storage = getStorage();
   const expenseRef = collection(db, "officeExpenses");
 
   const categories = [
@@ -106,6 +104,7 @@ export default function OfficeExpense() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+ console.log("HANDLE SUBMIT CALLED");
 
     if (!form.expenseDate || !form.category || !form.title || !form.amount) {
       alert("Please fill all required fields.");
@@ -121,15 +120,21 @@ export default function OfficeExpense() {
       let filePath = "";
 
       if (file) {
+          console.log("STEP 1");
+  console.log(file);
         const storageRef = ref(
           storage,
           `office-expenses/${Date.now()}_${file.name}`,
         );
+  console.log("STEP 2");
 
         await uploadBytes(storageRef, file);
 
+  console.log("STEP 3");
+        console.log("Selected File:", file);
+        console.log("Storage:", storage);
         fileURL = await getDownloadURL(storageRef);
-
+  console.log("STEP 4");
         fileName = file.name;
         fileType = file.type;
         filePath = storageRef.fullPath;
@@ -163,12 +168,19 @@ export default function OfficeExpense() {
 
       setForm(emptyForm);
       setEditId(null);
-
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       loadExpenses();
     } catch (err) {
-      console.log(err);
-      alert("Something went wrong.");
-    }
+  console.error("Firebase Error:", err);
+  alert(`
+Code: ${err.code}
+
+Message:
+${err.message}
+  `);
+}
 
     setLoading(false);
   };
@@ -451,6 +463,7 @@ export default function OfficeExpense() {
                   <label className="font-semibold">Upload Invoice</label>
 
                   <input
+                   ref={fileInputRef}
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                     onChange={(e) => setFile(e.target.files[0])}

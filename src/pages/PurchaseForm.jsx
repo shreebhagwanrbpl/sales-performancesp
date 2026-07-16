@@ -39,16 +39,26 @@ const createEmptyItem = () => ({
 // DEFAULT FORM
 // ============================
 
-const emptyForm = {
+// const emptyForm = {
+//   vendorName: "",
+//   contactNumber: "",
+//   alternateNumber: "",
+//   email: "",
+//   location: "",
+//   remarks: "",
+
+//   items: [createEmptyItem()],
+// };
+
+const createEmptyForm = () => ({
   vendorName: "",
   contactNumber: "",
   alternateNumber: "",
   email: "",
   location: "",
   remarks: "",
-
   items: [createEmptyItem()],
-};
+});
 
 // ============================
 // COMPONENT
@@ -61,7 +71,7 @@ export default function PurchaseForm() {
   const [editingId, setEditingId] = useState(null);
   const [showItemModal, setShowItemModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+const [form, setForm] = useState(createEmptyForm());
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summarySearch, setSummarySearch] = useState("");
   const role = localStorage.getItem("role");
@@ -157,10 +167,7 @@ export default function PurchaseForm() {
   // RESET FORM
   // ============================
 
-  const resetForm = () => {
-    setEditingId(null);
-    setForm(emptyForm);
-  };
+
 
   // ============================
   // VALIDATION
@@ -247,6 +254,11 @@ export default function PurchaseForm() {
   //     alert(err.message);
   //   }
   // };
+
+  const resetForm = () => {
+  setEditingId(null);
+  setForm(createEmptyForm());
+};
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -305,8 +317,9 @@ export default function PurchaseForm() {
 
       alert("Purchase Saved Successfully");
 
-      await loadPurchases();
-      resetForm();
+     await loadPurchases();
+      setEditingId(null);
+      setForm(createEmptyForm());
       setOpenForm(false);
     } catch (err) {
       console.error(err);
@@ -393,40 +406,51 @@ export default function PurchaseForm() {
       return total + amount;
     }, 0);
   };
-  const summaryData = (() => {
-    const grouped = {};
+const summaryData = (() => {
+  const grouped = {};
 
-    purchases.forEach((purchase) => {
-      const vendor = purchase.vendorName || "Unknown Vendor";
+  purchases.forEach((purchase) => {
+    const vendor = purchase.vendorName || "Unknown Vendor";
 
-      const date =
-        purchase.createdAt?.toDate?.().toLocaleDateString("en-IN") || "-";
+    const date =
+      purchase.createdAt?.toDate?.().toLocaleDateString("en-IN") || "-";
 
-      (purchase.items || []).forEach((item) => {
-        const product = (item.itemName || "").trim();
+    (purchase.items || []).forEach((item) => {
+      const product = (item.itemName || "").trim();
 
-        if (!product) return;
+      if (!product) return;
 
-        if (!grouped[product]) {
-          grouped[product] = [];
-        }
+      if (!grouped[product]) {
+        grouped[product] = [];
+      }
 
-        grouped[product].push({
-          vendor,
-          product,
-          date,
-          price: Number(item.price || 0),
-        });
+      grouped[product].push({
+        vendor,
+        product,
+        date,
+        price: Number(item.price || 0),
       });
     });
+  });
 
-    Object.keys(grouped).forEach((key) => {
-      grouped[key].sort((a, b) => a.price - b.price);
-    });
+  Object.keys(grouped).forEach((key) => {
+    grouped[key].sort((a, b) => a.price - b.price);
+  });
 
-    return grouped;
-  })();
+  const filtered = {};
 
+  Object.entries(grouped).forEach(([product, list]) => {
+    // Unique vendors
+    const vendors = [...new Set(list.map((x) => x.vendor.trim().toLowerCase()))];
+
+    // Sirf tab show karo jab 2 ya usse jyada ALAG vendors hon
+    if (vendors.length > 1) {
+      filtered[product] = list;
+    }
+  });
+
+  return filtered;
+})();
   const downloadDemoExcel = () => {
     const demo = [
       {
