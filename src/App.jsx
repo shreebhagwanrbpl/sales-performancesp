@@ -27,7 +27,13 @@ import ContactPageWeb from "./pages/ContactPageWeb";
 import Leave from "./pages/Leave";
 import PurchaseForm from "./pages/PurchaseForm";
 import OfficeExpense from "./pages/OfficeExpense";
-
+import RajHome from "./pages/RajbiosisLimited/home";
+import RajProducts from "./pages/RajbiosisLimited/products";
+import RajServices from "./pages/RajbiosisLimited/services";
+import RajContact from "./pages/RajbiosisLimited/contact";
+import RajDistrict from "./pages/RajbiosisLimited/district";
+import RajQuery from "./pages/RajbiosisLimited/query";
+import ProductsApprovel from "./pages/ProductsApprovel";
 export default function App() {
   const role = localStorage.getItem("role") || "";
   return (
@@ -59,6 +65,7 @@ export default function App() {
         <Route path="/admin/assign-tl" element={<AdminAssignTL />} />
         <Route path="/purchaseform" element={<PurchaseForm />} />
         <Route path="/officeexpense" element={<OfficeExpense />} />
+
         <Route path="reports" element={<Report />} />
         <Route
           path="/admin/excel-sales-detail"
@@ -75,6 +82,16 @@ export default function App() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/products-web" element={<Products />} />
           <Route path="/contact" element={<ContactPageWeb />} />
+          <Route path="/rajbiosis/home" element={<RajHome />} />
+          <Route path="/rajbiosis/products" element={<RajProducts />} />
+          <Route path="/rajbiosis/services" element={<RajServices />} />
+          <Route path="/rajbiosis/contact" element={<RajContact />} />
+          <Route path="/rajbiosis/district" element={<RajDistrict />} />
+          <Route path="/rajbiosis/query" element={<RajQuery />} />
+          <Route
+            path="/ProductsApprovel"
+            element={<ProductsApprovel />}
+          />
         </Route>
       </Route>
       {/* FALLBACK */}

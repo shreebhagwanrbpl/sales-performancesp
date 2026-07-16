@@ -190,11 +190,11 @@ function parseSheetToCustomers(rows) {
     //   ) || 0;
     const totalAmount = parseAmount(
       r["Total Amount"] ||
-        r["TOTAL AMOUNT"] ||
-        r["Total amount"] ||
-        r.Amount ||
-        r["Net Amount"] ||
-        r.Total,
+      r["TOTAL AMOUNT"] ||
+      r["Total amount"] ||
+      r.Amount ||
+      r["Net Amount"] ||
+      r.Total,
     );
 
     // const purchaseDate = safeStr(r["Purchase Date"]) || safeStr(r.Date);
@@ -232,10 +232,10 @@ function parseSheetToCustomers(rows) {
 
     const purchase = product
       ? {
-          product,
-          price: totalAmount ?? null,
-          date: purchaseDate,
-        }
+        product,
+        price: totalAmount ?? null,
+        date: purchaseDate,
+      }
       : null;
 
     if (!map.has(mobile)) {
@@ -1621,8 +1621,8 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
     const ok = window.confirm(
       `⚠️ PERMANENT DELETE\n\n` +
-        `${selectedIds.size} customers will be permanently deleted.\n\n` +
-        `❌ This action CANNOT be undone.`,
+      `${selectedIds.size} customers will be permanently deleted.\n\n` +
+      `❌ This action CANNOT be undone.`,
     );
 
     if (!ok) return;
@@ -1700,10 +1700,10 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
     const ok = window.confirm(
       `⚠️ PERMANENT DELETE\n\n` +
-        `Customer: ${c.name}\n` +
-        `Mobile: ${c.mobile}\n\n` +
-        `❌ This action CANNOT be undone.\n` +
-        `Are you sure?`,
+      `Customer: ${c.name}\n` +
+      `Mobile: ${c.mobile}\n\n` +
+      `❌ This action CANNOT be undone.\n` +
+      `Are you sure?`,
     );
 
     if (!ok) return;
@@ -1722,8 +1722,8 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
     const ok = window.confirm(
       `⚠️ PERMANENT DELETE\n\n` +
-        `${selectedIds.size} customers will be permanently deleted.\n\n` +
-        `This action CANNOT be undone.`,
+      `${selectedIds.size} customers will be permanently deleted.\n\n` +
+      `This action CANNOT be undone.`,
     );
 
     if (!ok) return;
@@ -2344,7 +2344,7 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
                   <td className="px-6 py-4 text-sm text-slate-700">
                     {Array.isArray(log.customers) &&
-                    log.customers.length > 0 ? (
+                      log.customers.length > 0 ? (
                       <ul className="space-y-1">
                         {log.customers.slice(0, 5).map((c) => (
                           <li
@@ -2524,14 +2524,14 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
                       const dayIndex = cycleStart
                         ? Math.min(
-                            days,
-                            Math.max(
-                              1,
-                              Math.floor(
-                                (nowMs() - cycleStart) / (24 * 3600 * 1000),
-                              ) + 1,
-                            ),
-                          )
+                          days,
+                          Math.max(
+                            1,
+                            Math.floor(
+                              (nowMs() - cycleStart) / (24 * 3600 * 1000),
+                            ) + 1,
+                          ),
+                        )
                         : 1;
 
                       return (
@@ -2646,13 +2646,13 @@ Employee ke paas already ${totalExisting} customers hain.`,
                                     {groups.length === 0
                                       ? "-"
                                       : groups.map((g) => (
-                                          <span
-                                            key={g}
-                                            className="mr-1 inline-block rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
-                                          >
-                                            {g}
-                                          </span>
-                                        ))}
+                                        <span
+                                          key={g}
+                                          className="mr-1 inline-block rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+                                        >
+                                          {g}
+                                        </span>
+                                      ))}
                                   </td>
                                 );
                               }
@@ -2803,8 +2803,8 @@ Employee ke paas already ${totalExisting} customers hain.`,
                                   <td className="px-4 py-3 text-sm">
                                     {c.purchaseDate
                                       ? new Date(
-                                          c.purchaseDate,
-                                        ).toLocaleDateString()
+                                        c.purchaseDate,
+                                      ).toLocaleDateString()
                                       : "-"}
                                   </td>
                                 );
@@ -2949,7 +2949,7 @@ Employee ke paas already ${totalExisting} customers hain.`,
                                       c.status === STATUS.PREMIUM ||
                                       c.status === STATUS.VOID ||
                                       c.status === STATUS.DND) &&
-                                      "opacity-40 cursor-not-allowed",
+                                    "opacity-40 cursor-not-allowed",
                                   )}
                                 >
                                   Forward

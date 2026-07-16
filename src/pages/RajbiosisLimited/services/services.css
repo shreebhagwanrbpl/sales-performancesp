@@ -1,0 +1,336 @@
+/* ================= WRAPPER ================= */
+
+.service-page-wrapper {
+  background: #f5f7fb;
+  min-height: 100vh;
+}
+
+/* ================= MAIN ================= */
+
+/* .service-page-main {
+  padding: 30px;
+  margin-left: 260px;
+} */
+
+/* ================= HEADING ================= */
+
+.service-page-heading {
+  font-size: 28px;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+/* ================= CARD + PREVIEW ================= */
+
+.service-page-card,
+.service-page-preview {
+  background: #fff;
+  padding: 25px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  transition: .2s;
+}
+
+.service-page-card:hover,
+.service-page-preview:hover {
+  transform: translateY(-2px);
+}
+
+/* ================= FORM ROW ================= */
+
+.service-page-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 10px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+/* ================= INPUT ================= */
+
+.service-page-input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  outline: none;
+  transition: .2s;
+}
+
+.service-page-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .2);
+}
+
+/* ================= BUTTON ================= */
+
+.service-page-btn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 600;
+  transition: .2s;
+}
+
+/* ================= ACTIONS ================= */
+
+.service-page-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+/* BLUE */
+
+.service-page-actions .service-page-btn:not(.service-page-add-btn):not(.service-page-delete-btn) {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+}
+
+.service-page-actions .service-page-btn:not(.service-page-add-btn):not(.service-page-delete-btn):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .1);
+}
+
+/* GREEN */
+
+.service-page-add-btn {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.service-page-add-btn:hover {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  transform: scale(1.05);
+}
+
+/* DELETE */
+
+.service-page-delete-btn {
+  background: #ef4444;
+}
+
+.service-page-delete-btn:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+/* PREVIEW DELETE */
+
+.service-page-preview-actions .service-page-delete-btn {
+  background: #ef4444;
+  padding: 6px 10px;
+  width: auto;
+  min-width: unset;
+  flex: unset;
+}
+
+.service-page-preview-actions .service-page-delete-btn:hover {
+  background: #dc2626;
+}
+
+/* ================= PREVIEW GRID ================= */
+
+.service-page-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+/* ================= PREVIEW CARD ================= */
+
+.service-page-preview-card {
+  background: #f3f4f6;
+  padding: 18px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 160px;
+  transition: .2s;
+}
+
+.service-page-preview-card:hover {
+  transform: translateY(-4px);
+}
+
+/* ================= PREVIEW ACTIONS ================= */
+
+/* ================= PREVIEW ACTIONS ================= */
+
+.service-page-preview-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ================= BUTTONS ================= */
+
+.service-page-preview-actions .service-page-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  line-height: 1;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+}
+
+/* EDIT BUTTON */
+
+.service-page-preview-actions .service-page-edit-btn {
+  background: #4f46e5;
+}
+
+.service-page-preview-actions .service-page-edit-btn:hover {
+  background: #4338ca;
+}
+
+/* DELETE BUTTON */
+
+.service-page-preview-actions .service-page-delete-btn {
+  background: #ef4444;
+}
+
+.service-page-preview-actions .service-page-delete-btn:hover {
+  background: #dc2626;
+}
+
+/* ================= MODAL ================= */
+
+.service-page-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.service-page-modal-box {
+  background: #fff;
+  padding: 25px;
+  border-radius: 16px;
+  width: 350px;
+  max-width: 90%;
+  outline: none;
+  animation: servicePageFadeIn .3s ease;
+}
+
+.service-page-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* ================= PREVIEW CARD ================= */
+
+.service-page-preview-card h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.service-page-preview-card p {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ================= CANCEL BUTTON ================= */
+
+.service-page-cancel-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #0f6ac5;
+  cursor: pointer;
+  display: inline-block;
+  width: auto;
+  flex: none;
+}
+
+.service-page-cancel-btn:hover {
+  background: #074acf;
+}
+
+/* ================= HEADER ================= */
+
+.service-page-top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 25px;
+  background: #fff;
+  padding: 20px 25px;
+  border-radius: 16px;
+}
+
+.service-page-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 18px;
+  color: #5b6475;
+  font-weight: 500;
+}
+
+.service-page-heading {
+  margin: 0;
+  font-size: 48px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+/* ================= RESPONSIVE ================= */
+
+@media (max-width:768px) {
+
+  .service-page-top-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .service-page-heading {
+    font-size: 34px;
+  }
+
+  .service-page-main {
+    margin-left: 0;
+  }
+
+  .service-page-row {
+    grid-template-columns: 1fr;
+  }
+
+  .service-page-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+/* ================= ANIMATION ================= */
+
+@keyframes servicePageFadeIn {
+
+  from {
+    transform: scale(.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+}
