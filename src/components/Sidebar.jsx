@@ -26,7 +26,7 @@ export default function Sidebar() {
       : "text-gray-600 hover:bg-gray-100";
 
   return (
-    <aside className="w-64 bg-white border-r min-h-screen">
+    <aside className="w-64 bg-white border-r h-screen sticky top-0 overflow-hidden flex flex-col">
       {/* LOGO */}
       <div className="h-16 flex items-center px-6 border-b gap-3">
         <img src={logo} alt="Logo" className="h-8" />
@@ -36,7 +36,13 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="p-4 space-y-2">
+      <nav
+        className="flex-1 p-4 space-y-2 overflow-y-auto"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "#6366f1 #f3f4f6",
+        }}
+      >
         {/* ================= COMMON ================= */}
         {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
           <Link
@@ -302,6 +308,76 @@ export default function Sidebar() {
             <BanknotesIcon className="w-5 h-5" />
             Office Expense
           </Link>
+        )}
+        {(role === "ADMIN" || role === "PURCHASING") && (
+          <Link
+            to="/ProductsApprovel"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
+              "/ProductsApprovel",
+            )}`}
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Products Approvel
+          </Link>
+        )}
+        {role === "ADMIN" && (
+          <div className="mt-4">
+            <div
+              onClick={() => setOpenWebsite(!openWebsite)}
+              className="flex items-center justify-between px-4 py-2 rounded-lg cursor-pointer hover:bg-gray-100"
+            >
+              <span>🏢 Rajbiosis Limited</span>
+              <span>{openWebsite ? "▲" : "▼"}</span>
+            </div>
+
+            {openWebsite && (
+              <div className="ml-5 mt-2 space-y-1">
+
+                <Link
+                  to="/rajbiosis/home"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/home")}`}
+                >
+                  Home
+                </Link>
+
+                <Link
+                  to="/rajbiosis/products"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/products")}`}
+                >
+                  Products
+                </Link>
+
+                <Link
+                  to="/rajbiosis/services"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/services")}`}
+                >
+                  Services
+                </Link>
+
+                <Link
+                  to="/rajbiosis/contact"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/contact")}`}
+                >
+                  Contact
+                </Link>
+
+                <Link
+                  to="/rajbiosis/district"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/district")}`}
+                >
+                  District
+                </Link>
+
+                <Link
+                  to="/rajbiosis/query"
+                  className={`block px-3 py-2 rounded-lg text-sm ${isActive("/rajbiosis/query")}`}
+                >
+                  Query
+                </Link>
+
+              </div>
+            )}
+          </div>
         )}
       </nav>
     </aside>

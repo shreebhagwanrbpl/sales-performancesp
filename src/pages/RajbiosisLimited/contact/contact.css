@@ -1,0 +1,382 @@
+/* ================= CONTACT PAGE ================= */
+
+.contact-page {
+  background: #f5f7fb;
+  min-height: 100vh;
+}
+
+.contact-main {
+  width: 100%;
+}
+
+/* ================= HEADING ================= */
+
+.contact-heading {
+  font-size: 26px;
+  margin-bottom: 20px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+/* ================= CARD ================= */
+
+.contact-card {
+  background: #fff;
+  padding: 25px;
+  border-radius: 16px;
+  margin-bottom: 25px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  transition: .2s;
+}
+
+.contact-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ================= INNER CARD ================= */
+
+.contact-inner-card {
+  border: 1px solid #f1f1f1;
+  border-radius: 12px;
+  padding: 15px;
+  margin-top: 10px;
+}
+
+/* ================= GRID ================= */
+
+.contact-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* ================= INPUT ================= */
+
+.contact-page input,
+.contact-page textarea,
+.contact-page select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+  outline: none;
+  transition: .2s;
+}
+
+.contact-page input:focus,
+.contact-page textarea:focus,
+.contact-page select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+}
+
+.contact-page input:hover,
+.contact-page textarea:hover,
+.contact-page select:hover {
+  border-color: #9ca3af;
+}
+
+.contact-page textarea {
+  resize: none;
+  min-height: 80px;
+}
+
+/* ================= BUTTON ================= */
+
+.contact-page button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 600;
+  transition: .2s;
+}
+
+.contact-page button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .1);
+}
+
+/* ================= ACTIONS ================= */
+
+.contact-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* ================= BUTTONS ================= */
+
+.contact-add-btn {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.contact-add-btn:hover {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+}
+
+.contact-edit {
+  background: #6366f1;
+}
+
+.contact-delete {
+  background: #ef4444;
+}
+
+.contact-delete:hover {
+  background: #dc2626;
+}
+
+/* ================= LINKS ================= */
+
+.contact-links {
+  font-size: 12px;
+  color: gray;
+  margin-top: 8px;
+}
+
+/* ================= TABLE ================= */
+
+.contact-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.contact-page th {
+  text-align: left;
+  padding: 12px;
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.contact-page td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.contact-page tbody tr:hover {
+  background: #f9fafb;
+}
+
+.contact-page td:last-child {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ================= MOBILE ================= */
+
+@media (max-width:768px) {
+
+  .contact-row {
+    grid-template-columns: 1fr;
+  }
+
+  .contact-main {
+    padding: 15px;
+  }
+
+}
+
+/* ROW */
+.contact-page td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+/* ROW HOVER */
+.contact-page tbody tr:hover {
+  background: #f9fafb;
+}
+
+/* ACTION BUTTONS WRAP */
+.contact-page td:last-child {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* EDIT BUTTON */
+.contact-edit {
+  background: #6366f1;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* DELETE BUTTON */
+.contact-delete {
+  background: #ef4444;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* BUTTON HOVER */
+.contact-edit:hover,
+.contact-delete:hover {
+  opacity: 0.9;
+}
+
+/* SAVE BUTTON */
+.contact-add-btn {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.contact-add-btn:hover {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  transform: scale(1.05);
+}
+
+/* ================= MODAL OVERLAY ================= */
+
+.contact-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* ================= MODAL BOX ================= */
+
+.contact-modal-box {
+  background: #ffffff;
+  padding: 24px;
+  border-radius: 14px;
+  width: 360px;
+  max-width: 90%;
+  outline: none;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  animation: contactModalFade 0.25s ease;
+}
+
+/* ================= CONTENT ================= */
+
+.contact-modal-content h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.contact-modal-content p {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 15px;
+}
+
+/* ================= HEADER ================= */
+
+.contact-top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 25px;
+  background: #fff;
+  padding: 20px 25px;
+  border-radius: 16px;
+}
+
+.contact-page-path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 18px;
+  color: #5b6475;
+  font-weight: 500;
+}
+
+.contact-heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+/* MOBILE */
+
+@media (max-width: 768px) {
+
+  .contact-top-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .contact-heading {
+    font-size: 34px;
+  }
+
+}
+
+/* ================= ACTION BUTTONS ================= */
+
+.contact-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* CANCEL */
+
+.contact-cancel-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: .2s;
+  color: #111827;
+}
+
+.contact-cancel-btn:hover {
+  background: #f3f4f6;
+}
+
+/* DELETE */
+
+.contact-modal-actions .contact-delete-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.contact-modal-actions .contact-delete-btn:hover {
+  background: #dc2626;
+}
+
+/* ================= ANIMATION ================= */
+
+@keyframes contactModalFade {
+
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+}
