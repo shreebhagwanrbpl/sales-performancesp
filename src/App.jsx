@@ -34,6 +34,7 @@ import RajContact from "./pages/RajbiosisLimited/contact";
 import RajDistrict from "./pages/RajbiosisLimited/district";
 import RajQuery from "./pages/RajbiosisLimited/query";
 import ProductsApprovel from "./pages/ProductsApprovel";
+import EotmList from "./pages/EotmList";
 export default function App() {
   const role = localStorage.getItem("role") || "";
   return (
@@ -55,6 +56,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="add-sale" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="eotm-list" element={<EotmList />} />
         <Route path="add-sale" element={<AddSale />} />
         <Route path="leave-management" element={<Leave />} />
         <Route path="feedback" element={<Feedback />} />

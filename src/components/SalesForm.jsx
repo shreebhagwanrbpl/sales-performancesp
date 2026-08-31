@@ -1,8 +1,10 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   CurrencyRupeeIcon,
   PhoneIcon,
   DocumentTextIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
   collection,
@@ -188,6 +190,53 @@ export default function SalesForm() {
     selectedEmployee === "ALL"
       ? entries
       : entries.filter((e) => e.employeeName === selectedEmployee);
+
+  // ✅ SEARCH FILTERED ENTRIES (FOR ALL ROLES)
+  const filteredTableEntries = useMemo(() => {
+    let list = filteredEntries;
+
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      list = list.filter((e) => {
+        if ((e.employeeName || "").toLowerCase().includes(term)) return true;
+        if ((e.remark || "").toLowerCase().includes(term)) return true;
+        if (String(e.calls || "").includes(term)) return true;
+        if (String(e.saleAmount || "").includes(term)) return true;
+
+        if (Array.isArray(e.pis)) {
+          const piMatch = e.pis.some((pi) => {
+            if ((pi.piNo || "").toLowerCase().includes(term)) return true;
+            if (String(pi.amount || "").includes(term)) return true;
+            if (Array.isArray(pi.products)) {
+              return pi.products.some((p) =>
+                (p.name || "").toLowerCase().includes(term)
+              );
+            }
+            return false;
+          });
+          if (piMatch) return true;
+        }
+
+        if (Array.isArray(e.sales)) {
+          const saleMatch = e.sales.some((s) => {
+            if ((s.piNo || "").toLowerCase().includes(term)) return true;
+            if (String(s.amount || "").includes(term)) return true;
+            if (Array.isArray(s.products)) {
+              return s.products.some((p) =>
+                (p.name || "").toLowerCase().includes(term)
+              );
+            }
+            return false;
+          });
+          if (saleMatch) return true;
+        }
+
+        return false;
+      });
+    }
+
+    return list;
+  }, [filteredEntries, searchTerm]);
 
   useEffect(() => {
     if (filteredEntries.length === 0) {
@@ -813,33 +862,6 @@ export default function SalesForm() {
     (sum, s) => sum + parseNumber(s.amount),
     0,
   );
-
-  // filtered table
-  const filteredTableEntries = entries.filter((e) => {
-    if (!searchTerm) return true;
-
-    const q = String(searchTerm || "").toLowerCase();
-
-    return (
-      e.employeeName?.toLowerCase().includes(q) ||
-      String(e.saleAmount || "").includes(q) ||
-      String(e.calls || "").includes(q) ||
-      e.pis?.some(
-        (p) =>
-          p.piNo?.toLowerCase().includes(q) ||
-          String(p.amount || "").includes(q) ||
-          (Array.isArray(p.products) &&
-            p.products.some((prod) => prod.name?.toLowerCase().includes(q))),
-      ) ||
-      e.sales?.some(
-        (s) =>
-          s.piNo?.toLowerCase().includes(q) ||
-          String(s.amount || "").includes(q) ||
-          (Array.isArray(s.products) &&
-            s.products.some((prod) => prod.name?.toLowerCase().includes(q))),
-      )
-    );
-  });
 
   const progress =
     monthlyTarget > 0
@@ -1927,41 +1949,45 @@ export default function SalesForm() {
 
       {/*  */}
       {/* ================= TABLE (ALWAYS VISIBLE) ================= */}
-      <div className="bg-white rounded-2xl shadow-sm p-6 max-w-6xl">
-        {/* <h3 className="text-lg font-semibold">Select Employee to Export Monthly Report</h3> */}
-        <div className="flex items-end justify-between gap-4 mb-4 flex-wrap">
-          {/* LEFT: EMPLOYEE DROPDOWN */}
-          {/* <h3 className="text-lg font-semibold">Sales Entries</h3> */}
-          <div className="flex items-center gap-2">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 max-w-6xl space-y-4">
+        {/* HEADER BAR & CONTROLS */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="space-y-1">
+            <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+              <span>Sales Entries Log</span>
+              <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-full">
+                {filteredTableEntries.length} Records
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Real-time daily sales logs and performance entries
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
             {isManager && (
-              <>
-                <label className="text-sm font-medium whitespace-nowrap">
-                  Pelase seelct employee, to Download monthly report
-                </label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 hidden sm:inline">Filter Employee:</span>
                 <select
-                  className="input w-72 md:w-80"
+                  className="h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 focus:outline-none shadow-2xs"
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                 >
-                  <option value="ALL">All</option>
-
+                  <option value="ALL">All Employees</option>
                   {[...new Set(entries.map((e) => e.employeeName))].map(
                     (name) => (
                       <option key={name} value={name}>
                         {name}
                       </option>
-                    ),
+                    )
                   )}
                 </select>
-              </>
+              </div>
             )}
-          </div>
 
-          {/* RIGHT: BUTTONS */}
-          <div className="flex gap-2">
             <button
               onClick={exportToExcelSameUI}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg"
+              className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-all flex items-center gap-1.5"
             >
               Export CSV
             </button>
@@ -1969,30 +1995,53 @@ export default function SalesForm() {
             {isManager && (
               <button
                 onClick={exportMonthlyReport}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-2xs transition-all"
               >
                 Monthly Report
               </button>
             )}
           </div>
         </div>
-        <div className="flex justify-between items-center mb-4"></div>
+
+        {/* PROMINENT SEARCH BAR (FOR ALL ROLES) */}
+        <div className="relative w-full">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <MagnifyingGlassIcon className="w-4 h-4 text-slate-400" />
+          </div>
+
+          <input
+            type="text"
+            placeholder="Search entries by Employee Name, PI No, Amount, Product, Calls, or Remark..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-10 py-2.5 bg-slate-50/80 hover:bg-slate-50 focus:bg-white rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-2xs"
+          />
+
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <XMarkIcon className="w-4 h-4 bg-slate-200/60 rounded-full p-0.5" />
+            </button>
+          )}
+        </div>
+
+        {/* ENTRIES LIST */}
         {entries.length === 0 ? (
-          <p className="text-sm text-gray-500">No entries found.</p>
+          <p className="text-xs text-slate-500 py-8 text-center font-medium">No sales entries found.</p>
+        ) : filteredTableEntries.length === 0 ? (
+          <div className="py-8 text-center space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <p className="text-xs font-bold text-slate-700">No matching entries found for "{searchTerm}"</p>
+            <button
+              onClick={() => setSearchTerm("")}
+              className="text-xs text-indigo-600 font-extrabold hover:underline"
+            >
+              Clear Search Filter
+            </button>
+          </div>
         ) : (
-          <div className="max-h-[720px] overflow-y-auto border rounded-lg scroll-area">
-            {isManager && (
-              <div className="flex justify-between items-center mb-4 ml-3">
-                <h3 className="ml-3"> Search Bar</h3>
-                <input
-                  type="text"
-                  placeholder="Search by Name / PI No / Amount / Product / Calls"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="input w-full md:w-96"
-                />
-              </div>
-            )}
+          <div className="max-h-[720px] overflow-y-auto border border-slate-200/80 rounded-2xl scroll-area shadow-2xs bg-white">
 
             <table className="w-full text-sm border-collapse">
               <tbody>
