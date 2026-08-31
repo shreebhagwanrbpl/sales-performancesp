@@ -14,12 +14,14 @@ import { Pencil, Trash2, Upload, FileUp } from "lucide-react";
 import ExcelJS from "exceljs";
 import { db, storage } from "../../../firebase";
 import CategoryProduct from "./CategoryProduct";
+import ImportProgressWidget from "./ImportProgressWidget";
+import { importExcelProducts } from "./excelImportHelper";
 import {
   useLocation,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable, listAll } from "firebase/storage";
 
 export default function ProductPage() {
   const [currentPage, setCurrentPage] = useState(1);
@@ -37,6 +39,17 @@ export default function ProductPage() {
   const [totalRows, setTotalRows] = useState(0);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [importStatus, setImportStatus] = useState({
+    importing: false,
+    totalFiles: 0,
+    currentFileIndex: 0,
+    currentFileName: "",
+    currentFileProgress: 0,
+    skippedCount: 0,
+    successCount: 0,
+    isMinimized: false,
+    filesList: []
+  });
   const [imageGallery, setImageGallery] = useState([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [products, setProducts] = useState([
@@ -60,41 +73,43 @@ export default function ProductPage() {
       pdf: "",
     }
   ]);
-  const cleanProduct = (p) => ({
-    productId: p.productId || null,
-    title: p.title || "",
-    price: p.price || "",
-    desc: p.desc || "",
-    capacity: p.capacity || "",
-    throughput: p.throughput || "",
-    instrument: p.instrument || "",
-    model: p.model || "",
-    usage: p.usage || "",
-    brand: p.brand || "",
-    requestType: p.requestType || "APPROVAL",
-    parameters: p.parameters || "",
-    automation: p.automation || "",
-    availability: p.availability || "",
-    size: p.size || "",
-    images: Array.isArray(p.images)
+  const cleanProduct = (p) => {
+    const imagesArray = Array.isArray(p.images)
       ? p.images
       : p.image
         ? [p.image]
-        : [],
-
-    video: p.video || "",
-    pdf: p.pdf || "",
-    createdAt: p.createdAt ? p.createdAt : new Date().toISOString(),
-    isPublished: typeof p.isPublished === "boolean" ? p.isPublished : true,
-    approvalStatus: p.approvalStatus || "PENDING",
-    approvedAt: p.approvedAt || null,
-    approvedBy: p.approvedBy || "",
-    recheckReason: p.recheckReason || "",
-
-    id: p.id,
-    category: p.category || "",
-    categoryId: p.categoryId || "",
-  });
+        : [];
+    return {
+      productId: p.productId || null,
+      title: p.title || "",
+      price: p.price || "",
+      desc: p.desc || "",
+      capacity: p.capacity || "",
+      throughput: p.throughput || "",
+      instrument: p.instrument || "",
+      model: p.model || "",
+      usage: p.usage || "",
+      brand: p.brand || "",
+      requestType: p.requestType || "APPROVAL",
+      parameters: p.parameters || "",
+      automation: p.automation || "",
+      availability: p.availability || "",
+      size: p.size || "",
+      images: imagesArray,
+      image: imagesArray[0] || "",
+      video: p.video || "",
+      pdf: p.pdf || "",
+      createdAt: p.createdAt ? p.createdAt : new Date().toISOString(),
+      isPublished: typeof p.isPublished === "boolean" ? p.isPublished : true,
+      approvalStatus: p.approvalStatus || "PENDING",
+      approvedAt: p.approvedAt || null,
+      approvedBy: p.approvedBy || "",
+      recheckReason: p.recheckReason || "",
+      id: p.id,
+      category: p.category || "",
+      categoryId: p.categoryId || "",
+    };
+  };
   const [savedProducts, setSavedProducts] = useState([]);
   const [editIndex, setEditIndex] = useState(null);
   const [imageModal, setImageModal] = useState(null);
@@ -530,260 +545,348 @@ export default function ProductPage() {
     }
 
   };
-  const handleExcelImport = async (e) => {
-    setImporting(true);
-    setImportProgress(0);
-    const file = e.target.files[0];
-    if (!file) return;
+  /* =========================================================
+     EXCEL IMPORT HELPERS
+     Same image/import matching logic as the main Product Page,
+     while keeping this page's existing Pending/Approval flow.
+     ========================================================= */
+
+  const getFirebaseImageMap = async (category, subCategory) => {
+    const imageMap = {};
 
     try {
-      const workbook = new ExcelJS.Workbook();
+      if (!category || !subCategory) return imageMap;
 
-      const buffer = await file.arrayBuffer();
+      const folderRef = ref(
+        storage,
+        `${category}/${subCategory}`
+      );
 
-      await workbook.xlsx.load(buffer);
+      const files = await listAll(folderRef);
 
-      const worksheet = workbook.getWorksheet(1);
-      const rowsCount = worksheet.rowCount - 1;
+      console.log("Folder:", folderRef.fullPath);
+      console.log("Total Images:", files.items.length);
 
-      const headers = {};
+      const urls = [];
 
-      worksheet.getRow(1).eachCell((cell, colNumber) => {
-        headers[
-          cell.value?.toString().trim().toLowerCase()
-        ] = colNumber;
-      });
-      const imageMap = {};
+      for (const file of files.items) {
+        const url = await getDownloadURL(file);
 
-      // 🔥 Extract Images
-      // worksheet.getImages().forEach((img) => {
-      //   imageMap[img.range.tl.nativeRow + 1] = img.imageId;
-      // });
-      worksheet.getImages().forEach((img) => {
-        const media = workbook.model.media.find(
-          (m) => m.index === img.imageId
+        urls.push({
+          name: file.name.toLowerCase(),
+          fullPath: file.fullPath.toLowerCase(),
+          url,
+        });
+      }
+
+      imageMap[subCategory.toLowerCase()] = urls;
+    } catch (err) {
+      console.log("Folder not found", category, subCategory);
+    }
+
+    return imageMap;
+  };
+
+  const loadExcelFile = async (file) => {
+    const workbook = new ExcelJS.Workbook();
+
+    const buffer = await file.arrayBuffer();
+
+    await workbook.xlsx.load(buffer);
+
+    const worksheet = workbook.getWorksheet(1);
+
+    if (!worksheet) {
+      throw new Error(`Worksheet not found in ${file.name}`);
+    }
+
+    const headers = {};
+
+    worksheet.getRow(1).eachCell((cell, colNumber) => {
+      headers[
+        cell.value?.toString().trim().toLowerCase()
+      ] = colNumber;
+    });
+
+    return {
+      worksheet,
+      headers,
+      rowsCount: Math.max(worksheet.rowCount - 1, 1),
+    };
+  };
+
+  const buildImageMap = async (
+    replaceImages,
+    worksheet,
+    headers,
+    fileSubCategory
+  ) => {
+    if (!replaceImages) {
+      return {};
+    }
+
+    const categoryColumn = headers["category"];
+
+    if (!categoryColumn || worksheet.rowCount < 2) {
+      return {};
+    }
+
+    const firstCategory = worksheet
+      .getRow(2)
+      .getCell(categoryColumn)
+      .value;
+
+    if (!firstCategory || !fileSubCategory) {
+      return {};
+    }
+
+    return getFirebaseImageMap(
+      String(firstCategory).trim(),
+      fileSubCategory
+    );
+  };
+
+  const parseExcelRow = (
+    row,
+    headers,
+    imageMap,
+    imageIndexMap,
+    replaceImages,
+    fileSubCategory
+  ) => {
+    const getValue = (key) => {
+      const col = headers[key];
+
+      if (!col) return "";
+
+      const value = row.getCell(col).value;
+
+      if (value == null) return "";
+
+      if (typeof value === "object") {
+        return (
+          value.text ||
+          value.richText?.map((t) => t.text).join("") ||
+          ""
         );
+      }
 
-        imageMap[img.imageId] = media;
-      });
+      return String(value);
+    };
 
-      const formatted = [];
+    /* Excel images column -> URLs */
+    const imageUrls = [
+      ...new Set(
+        getValue("images")
+          .split(/\r?\n|,/)
+          .map((url) => url.trim())
+          .filter((url) => /^https?:\/\//i.test(url))
+      ),
+    ];
 
-      for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
-        const row = worksheet.getRow(rowNumber);
+    const imageFileNames = imageUrls.map((url) =>
+      url
+        .split("/")
+        .pop()
+        .split("?")[0]
+        .toLowerCase()
+    );
 
-        let imageUrl = "";
+    const hasData = [
+      getValue("title").trim(),
+      getValue("desc").trim(),
+      getValue("brand").trim(),
+      getValue("price").trim(),
+      getValue("capacity").trim(),
+      getValue("throughput").trim(),
+      getValue("instrument").trim(),
+      getValue("parameters").trim(),
+      getValue("model").trim(),
+      getValue("usage").trim(),
+    ].some(Boolean);
 
-        // 🔥 If image exists in row
-        const currentImage = worksheet.getImages().find(
-          (img) => img.range.tl.nativeRow + 1 === rowNumber
-        );
+    if (!hasData) {
+      return null;
+    }
 
-        if (currentImage) {
-          const image = imageMap[currentImage.imageId];
+    const category = getValue("category").trim();
 
-          if (image?.buffer) {
-            const blob = new Blob([image.buffer]);
+    const subCategory =
+      getValue("sub category").trim() ||
+      fileSubCategory;
 
-            const imageRef = ref(
-              storage,
-              `rajbiosislimited/products/${Date.now()}-${rowNumber}.png`
+    let images = imageUrls;
+
+    /* =========================================================
+       SAME IMAGE MATCHING LOGIC AS MAIN PRODUCT PAGE
+       1. Exact filename match
+       2. Normalized title/image-name scoring
+       ========================================================= */
+    if (replaceImages && subCategory) {
+      const key = subCategory.toLowerCase();
+      const firebaseImages = imageMap[key] || [];
+
+      console.log("SubCategory:", key);
+      console.log("Firebase Images:", firebaseImages);
+
+      const exactMatches = firebaseImages.filter((img) =>
+        imageFileNames.includes(img.name.toLowerCase())
+      );
+
+      if (exactMatches.length > 0) {
+        images = exactMatches.map((img) => img.url);
+      } else {
+        const normalize = (str = "") =>
+          String(str)
+            .toLowerCase()
+            .replace(/^https?:\/\/.*\//, "")
+            .replace(/\?.*$/, "")
+            .replace(/\.(jpg|jpeg|png|webp)$/i, "")
+            .replace(/500x500|250x250|1000x1000/gi, "")
+            .replace(/[-_]/g, " ")
+            .replace(/\d+x\d+/g, "")
+            .replace(/[^a-z0-9]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const words = normalize(getValue("title"))
+          .split(" ")
+          .filter((word) => word.length > 1);
+
+        const titleText = normalize(getValue("title"));
+
+        console.log("Excel Title:", getValue("title"));
+
+        const scored = firebaseImages
+          .map((img) => {
+            const imageName = normalize(
+              `${img.name} ${img.fullPath}`
             );
 
-            await uploadBytes(imageRef, blob);
+            let score = 0;
 
-            imageUrl = await getDownloadURL(imageRef);
-            console.log("IMAGE URL:", imageUrl);
-          }
+            for (const word of words) {
+              if (imageName.includes(word)) {
+                score += 2;
+              }
+            }
+
+            if (titleText && imageName.includes(titleText)) {
+              score += 20;
+            }
+
+            if (titleText && titleText.includes(imageName)) {
+              score += 10;
+            }
+
+            console.log({
+              excel: getValue("title"),
+              image: img.name,
+              score,
+            });
+
+            return {
+              ...img,
+              score,
+            };
+          })
+          .sort((a, b) => b.score - a.score);
+
+        if (scored.length && scored[0].score > 0) {
+          images = [scored[0].url];
         }
-
-        const getValue = (key) => {
-          const col = headers[key];
-
-          if (!col) return "";
-
-          const value = row.getCell(col).value;
-
-          if (value == null) return "";
-
-          if (typeof value === "object") {
-            return value.text || value.richText?.map(t => t.text).join("") || "";
-          }
-
-          return String(value);
-        };
-        const hasData = [
-          getValue("title").trim(),
-          getValue("desc").trim(),
-          getValue("brand").trim(),
-          getValue("price").trim(),
-          getValue("capacity").trim(),
-          getValue("throughput").trim(),
-          getValue("instrument").trim(),
-          getValue("parameters").trim(),
-          getValue("model").trim(),
-          getValue("usage").trim(),
-        ].some(value => value !== "");
-        const category = getValue("category").trim();
-        if (!hasData) {
-          continue;
-        }
-        formatted.push({
-          id:
-            (
-              getValue("title")
-                ?.toLowerCase()
-                .trim()
-                .replace(/\s+/g, "-")
-                .replace(/[^\w-]+/g, "") || ""
-            ) +
-            "-" +
-            (
-              category
-                ?.toLowerCase()
-                .trim()
-                .replace(/\s+/g, "-") || "other"
-            ),
-
-          originalSlug: getValue("title")
-            ?.toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^\w-]+/g, ""),
-          category,
-
-          title: getValue("title"),
-
-          price: getValue("price"),
-
-          desc: getValue("desc"),
-
-          capacity: getValue("capacity"),
-
-          throughput: getValue("throughput"),
-
-          instrument: getValue("instrument"),
-
-          model: getValue("model"),
-
-          usage: getValue("usage"),
-
-          brand: getValue("brand"),
-
-          parameters: getValue("parameters"),
-
-          automation: getValue("automation"),
-
-          availability: getValue("availability"),
-
-          size: getValue("size"),
-
-          slug: getValue("title")
-            ?.toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^\w-]+/g, ""),
-
-          images: imageUrl ? [imageUrl] : [],
-          video: "",
-          pdf: "",
-
-          createdAt: new Date().toISOString(),
-
-          isPublished: false,
-          approvalStatus: "PENDING",
-          recheckReason: "",
-          approvedBy: "",
-          approvedAt: null,
-          importedAt: new Date().toISOString(),
-        });
-        const processed = rowNumber - 1;
-
-        setImportProgress(
-          Math.round((processed / rowsCount) * 100)
-        );
-
-
       }
+    }
 
-      const approvalRef = doc(
-        db,
-        "websites",
-        "rajbiosislimited",
-        "pages",
-        "productApproval"
-      );
+    const title = getValue("title");
 
-      const approvalSnap = await getDoc(approvalRef);
+    const slug = title
+      ?.toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^\w-]+/g, "");
 
-      const existingPending =
-        approvalSnap.exists()
-          ? approvalSnap.data().products || []
-          : [];
-      const productRef = doc(
-        db,
-        "websites",
-        "rajbiosislimited",
-        "pages",
-        "products"
-      );
+    return {
+      id: crypto.randomUUID(),
 
+      category,
+      subCategory,
 
-      const productSnap = await getDoc(productRef);
+      title,
+      price: getValue("price"),
+      desc: getValue("desc"),
+      capacity: getValue("capacity"),
+      throughput: getValue("throughput"),
+      instrument: getValue("instrument"),
+      model: getValue("model"),
+      usage: getValue("usage"),
+      brand: getValue("brand"),
+      parameters: getValue("parameters"),
+      automation: getValue("automation"),
+      availability: getValue("availability"),
+      size: getValue("size"),
 
-      const existingProducts = productSnap.exists()
-        ? productSnap.data().products || []
-        : [];
+      slug,
 
-      const maxProductId =
-        existingProducts.length > 0
-          ? Math.max(
-            ...existingProducts.map((p) =>
-              Number(p.productId || 0)
-            )
-          )
-          : 0;
+      images,
+      video: getValue("video").trim(),
+      pdf: getValue("pdf").trim(),
 
-      let normalCounter = maxProductId;
-      const approvalProducts = [];
+      createdAt: new Date().toISOString(),
 
-      for (const item of formatted) {
-        const product = {
-          ...item,
+      /* Existing Pending / Approval flow stays unchanged */
+      isPublished: false,
+      approvalStatus: "PENDING",
+      requestType: "APPROVAL",
+      recheckReason: "",
+      approvedBy: "",
+      approvedAt: null,
+      importedAt: new Date().toISOString(),
+    };
+  };
 
-          productId: null,
+  const handleExcelImport = async (e) => {
+    const files = Array.from(e.target.files || []);
 
-          categoryId: item.category
-            ? item.category.toLowerCase().replace(/\s+/g, "-")
-            : "",
-        };
+    if (files.length === 0) {
+      return;
+    }
 
-        approvalProducts.push(product);
-      }
+    setImporting(true);
+    setImportProgress(0);
+    setImportStatus({
+      importing: true,
+      totalFiles: files.length,
+      currentFileIndex: 0,
+      currentFileName: files[0].name,
+      currentFileProgress: 0,
+      skippedCount: 0,
+      successCount: 0,
+      isMinimized: false,
+      filesList: files.map((f) => f.name),
+    });
 
-
-
-      await setDoc(
-        approvalRef,
-        {
-          products: [
-            ...existingPending,
-            ...approvalProducts,
-          ],
-        },
-        { merge: true }
-      );
-      setSavedProducts([
-        ...existingPending,
-        ...approvalProducts,
-      ]);
+    try {
+      const stats = await importExcelProducts({
+        files,
+        websiteName: "rajbiosislimited",
+        source: "product",
+        setImportStatus,
+        setImportProgress,
+      });
 
       toast.success(
-        "Products imported successfully.\nWaiting for Admin Approval."
+        `Import complete! Normal products: ${stats.importedNormalProducts}, Category products: ${stats.importedCategoryProducts}. Skipped: ${stats.skippedDuplicates}`
       );
     } catch (err) {
-      console.error(err);
-      toast.error("Import failed ");
+      console.error("Excel Import Error:", err);
+      toast.error(err?.message || "Import failed");
     } finally {
       setImporting(false);
+      setImportProgress(0);
+      setImportStatus((prev) => ({ ...prev, importing: false }));
+      if (e.target) {
+        e.target.value = "";
+      }
     }
   };
 
@@ -1290,6 +1393,7 @@ export default function ProductPage() {
                   <input
                     type="file"
                     accept=".xlsx, .xls"
+                    multiple
                     onChange={handleExcelImport}
                     style={{ display: "none" }}
                     id="excelUpload"
@@ -1818,6 +1922,7 @@ export default function ProductPage() {
         {activeTab === "categories" && (
           <CategoryProduct />
         )}
+        <ImportProgressWidget status={importStatus} setStatus={setImportStatus} />
       </div>
     </>
   );
