@@ -4,6 +4,9 @@ import {
   PhoneIcon,
   ChartBarIcon,
   DocumentChartBarIcon,
+  BanknotesIcon,
+  CheckBadgeIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 
 import {
@@ -20,6 +23,7 @@ import {
 import { onAuthStateChanged, getAuth } from "firebase/auth";
 import { db } from "../firebase";
 import ProductOfTheMonth from "../components/ProductOfTheMonth";
+import EmployeeOfTheMonth from "../components/EmployeeOfTheMonth";
 import { calcExcelTotals } from "../utils/calcExcelTotals";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import * as XLSX from "xlsx";
@@ -46,6 +50,24 @@ const getFYRange = (fy) => {
   const start = new Date(startYear, 3, 1, 0, 0, 0); // 1 Apr startYear
   const end = new Date(startYear + 1, 2, 31, 23, 59, 59); // 31 Mar nextYear
   return { start, end };
+};
+
+// FY string (2025-26) -> 12 months array [{key: "2025-04", label: "April 2025"}, ...]
+const getFYMonths = (fy) => {
+  const startYear = parseInt(fy.split("-")[0], 10);
+  const months = [];
+  for (let i = 0; i < 12; i++) {
+    const year = i < 9 ? startYear : startYear + 1;
+    const month = i < 9 ? i + 4 : i - 8;
+    const key = `${year}-${pad2(month)}`;
+    const dateObj = new Date(year, month - 1, 1);
+    const label = dateObj.toLocaleString("default", {
+      month: "long",
+      year: "numeric",
+    });
+    months.push({ key, label });
+  }
+  return months;
 };
 
 // Dropdown ke liye last N FY list
@@ -83,6 +105,20 @@ export default function Dashboard() {
   const [excelRows, setExcelRows] = useState([]);
   const [ctcEntries, setCtcEntries] = useState([]);
   const [rangeType, setRangeType] = useState("MONTH");
+
+  // 🔄 FY & Month Sync: Auto-update selectedMonth when Financial Year changes
+  useEffect(() => {
+    const validMonths = getFYMonths(selectedFY).map((m) => m.key);
+    if (!validMonths.includes(selectedMonth)) {
+      const nowKey = `${new Date().getFullYear()}-${pad2(new Date().getMonth() + 1)}`;
+      if (validMonths.includes(nowKey)) {
+        setSelectedMonth(nowKey);
+      } else {
+        // default to last month in that FY (March)
+        setSelectedMonth(validMonths[validMonths.length - 1]);
+      }
+    }
+  }, [selectedFY]);
   const getEmployeeEffectiveTarget = (monthlyTarget) => {
     if (!monthlyTarget) return 0;
 
@@ -995,26 +1031,59 @@ export default function Dashboard() {
 
     const unsub = onSnapshot(q, (snap) => {
       let totalSale = 0;
+      let totalCalls = 0;
+      let posCalls = 0;
+
       const achievedMap = {};
+      const callsMap = {};
+      const posMap = {};
 
       snap.forEach((d) => {
         const data = d.data();
-        const amt = data.saleAmount ?? data.amount ?? 0;
-        totalSale += amt;
+        const amt = Number(data.saleAmount ?? data.amount ?? 0);
+        const callsVal = data.calls !== undefined && data.calls !== null ? String(data.calls).replace(/,/g, "").trim() : "0";
+        const callsCount = Number(callsVal) || 0;
+        const isPos = data.feedback === "Interested" || data.feedback === "Positive";
 
-        if (data.employeeId) {
-          achievedMap[data.employeeId] =
-            (achievedMap[data.employeeId] || 0) + amt;
+        totalSale += amt;
+        totalCalls += callsCount;
+        if (isPos) posCalls++;
+
+        const empId = data.employeeId;
+        const empName = data.employeeName || data.employeeEmail || "";
+        const normName = getFirstName(empName);
+
+        if (empId) {
+          achievedMap[empId] = (achievedMap[empId] || 0) + amt;
+          callsMap[empId] = (callsMap[empId] || 0) + callsCount;
+          if (isPos) posMap[empId] = (posMap[empId] || 0) + 1;
+        }
+
+        if (normName) {
+          achievedMap[normName] = (achievedMap[normName] || 0) + amt;
+          callsMap[normName] = (callsMap[normName] || 0) + callsCount;
+          if (isPos) posMap[normName] = (posMap[normName] || 0) + 1;
         }
       });
 
       setCompanyAchieved(totalSale);
+      setStats((prev) => ({
+        ...prev,
+        sale: totalSale,
+        calls: totalCalls,
+        positive: posCalls,
+      }));
 
       setEmployeeStats((prev) =>
-        prev.map((e) => ({
-          ...e,
-          achieved: achievedMap[e.employeeId] || 0,
-        })),
+        prev.map((e) => {
+          const normName = getFirstName(e.name);
+          return {
+            ...e,
+            achieved: achievedMap[e.employeeId] || achievedMap[normName] || 0,
+            calls: callsMap[e.employeeId] || callsMap[normName] || 0,
+            positive: posMap[e.employeeId] || posMap[normName] || 0,
+          };
+        })
       );
     });
 
@@ -1229,6 +1298,96 @@ export default function Dashboard() {
   const companySummarySale =
     rangeType === "YEAR" ? finalCompanyAchieved : Number(stats.sale || 0);
 
+  // 🎯 DYNAMIC FILTERED KPI VALUES (RESPONDS TO EMPLOYEE, YEAR, MONTH & RANGE FILTERS)
+  const activeKpiData = useMemo(() => {
+    const hasEmployeeFilter = Boolean(
+      selectedEmployee && selectedEmployee !== "ALL" && selectedEmployee !== ""
+    );
+
+    if (!hasEmployeeFilter) {
+      const target = Number(effectiveCompanyTarget || 0);
+      const achieved = Number(finalCompanyAchieved || 0);
+      const percent = companyPercent || 0;
+      const calls = Number(stats.calls || 0);
+      const perf =
+        stats.calls && stats.positive > 0
+          ? Math.round((stats.positive / stats.calls) * 100)
+          : percent;
+
+      return {
+        target,
+        achieved,
+        percent,
+        calls,
+        perf,
+        targetLabel: "Sales Team Target",
+        achievedSubtext: "Selected range total",
+        isFiltered: false,
+      };
+    }
+
+    // Specific employee selected
+    const selectedEmpObj = employees.find(
+      (e) => e.id === selectedEmployee || e.name === selectedEmployee
+    );
+    const selectedEmpName = selectedEmpObj
+      ? selectedEmpObj.name || selectedEmpObj.email
+      : selectedEmployee;
+
+    const normName = getFirstName(selectedEmpName);
+
+    const empStat = employeeStats.find(
+      (e) =>
+        e.employeeId === selectedEmployee ||
+        (selectedEmpName && getFirstName(e.name) === normName)
+    );
+
+    const baseEmpTarget =
+      empStat?.target ||
+      (selectedEmpObj?.monthlyTarget ? Number(selectedEmpObj.monthlyTarget) : 1500000);
+
+    const empTarget = getRangeTarget(baseEmpTarget);
+
+    const baseAchieved = Number(empStat?.achieved || 0);
+    const excelAmt =
+      rangeType === "YEAR" && selectedFY === "2025-26" && selectedEmpName
+        ? Number(excelTotalMap.get(normName) || 0)
+        : 0;
+    const empAchieved = baseAchieved + excelAmt;
+
+    const empPercent = empTarget > 0 ? Math.round((empAchieved / empTarget) * 100) : 0;
+
+    const empCalls = Number(empStat?.calls || 0);
+    const empPositive = Number(empStat?.positive || 0);
+    const empPerf =
+      empCalls > 0 && empPositive > 0
+        ? Math.round((empPositive / empCalls) * 100)
+        : empPercent;
+
+    return {
+      target: empTarget,
+      achieved: empAchieved,
+      percent: empPercent,
+      calls: empCalls,
+      perf: empPerf,
+      targetLabel: `${selectedEmpName.split(" ")[0]}'s Target`,
+      achievedSubtext: `Achieved by ${selectedEmpName.split(" ")[0]}`,
+      isFiltered: true,
+      empName: selectedEmpName,
+    };
+  }, [
+    selectedEmployee,
+    employees,
+    employeeStats,
+    rangeType,
+    selectedFY,
+    excelTotalMap,
+    effectiveCompanyTarget,
+    finalCompanyAchieved,
+    companyPercent,
+    stats,
+  ]);
+
   const excelOnlyEmployees = useMemo(() => {
     const existing = new Set(employeeStats.map((e) => getFirstName(e.name)));
 
@@ -1297,61 +1456,71 @@ export default function Dashboard() {
     <div className="px-4 py-2 space-y-4">
       {/* {(role === "TL" || role === "ADMIN") && <ProductOfTheMonth />} */}
       {/* <div className="flex items-start gap-4"> */}
-      <div className="grid grid-cols-[auto,1fr] items-stretch gap-4">
+      <div className="flex flex-wrap items-stretch gap-4">
+        <EmployeeOfTheMonth />
         {(role === "TL" || role === "ADMIN") && <ProductOfTheMonth />}
         <div
           className="
-            w-full
-            bg-white rounded-xl shadow
-            px-5 py-4
-            grid
-            grid-rows-[auto,auto]
-            gap-3
+            flex-1 min-w-[320px]
+            bg-white rounded-2xl border border-slate-200/90 shadow-xs
+            p-5
+            flex flex-col justify-between gap-3
           "
         >
-          {/* ROW 1 – Title + Range label */}
-          <div className="flex justify-between items-center">
+          {/* ROW 1 – Title + Export Report + FY Badge */}
+          <div className="flex flex-wrap justify-between items-center gap-2">
             <div>
-              <h2 className="text-lg font-semibold text-gray-800">
+              <h2 className="text-base font-extrabold text-slate-800 tracking-tight">
                 Sales Overview
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-xs text-slate-500 font-medium">
                 Performance based on selected range
               </p>
             </div>
 
-            <p className="text-xs text-blue-600 font-medium whitespace-nowrap">
-              Showing data for: <b>FY {selectedFY}</b>
-            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportToExcel}
+                className="h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] shadow-xs hover:shadow transition-all flex items-center gap-1"
+              >
+                <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                Export Report
+              </button>
+
+              <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-100 font-extrabold px-3 py-1 rounded-full whitespace-nowrap">
+                Showing data for: <b>FY {selectedFY}</b>
+              </span>
+            </div>
           </div>
 
-          {/* ROW 2 – Controls (NO HEIGHT JUMP) */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* ROW 2 – Controls Bar */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-1">
             {/* Range buttons */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="flex bg-slate-100/90 rounded-xl p-1 border border-slate-200/50">
               {["DAILY", "WEEK", "MONTH", "YEAR"].map((t) => (
                 <button
                   key={t}
                   onClick={() => setRangeType(t)}
-                  className={`px-4 py-1.5 text-sm rounded-md transition-all
-            ${
-              rangeType === t
-                ? "bg-blue-600 text-white shadow"
-                : "text-gray-600 hover:bg-white"
-            }`}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    rangeType === t
+                      ? "bg-white text-blue-700 shadow-xs border border-slate-200/60"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                  }`}
                 >
                   {t === "DAILY"
                     ? "Daily"
                     : t === "WEEK"
-                      ? "Weekly"
-                      : t === "MONTH"
-                        ? "Monthly"
-                        : "Yearly"}
+                    ? "Weekly"
+                    : t === "MONTH"
+                    ? "Monthly"
+                    : "Yearly"}
                 </button>
               ))}
             </div>
+
+            {/* FY Select */}
             <select
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-8 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none transition-colors shadow-2xs"
               value={selectedFY}
               onChange={(e) => setSelectedFY(e.target.value)}
             >
@@ -1362,15 +1531,14 @@ export default function Dashboard() {
               ))}
             </select>
 
+            {/* Employee Select */}
             {(role === "ADMIN" || role === "TL") && (
               <select
-                className="h-9 px-3 rounded-lg border border-gray-300 text-sm bg-white"
+                className="h-8 px-3 rounded-xl border border-slate-200/90 text-xs font-semibold text-slate-700 bg-slate-50/50 hover:border-slate-300 focus:outline-none transition-colors shadow-2xs"
                 value={selectedEmployee}
                 onChange={(e) => setSelectedEmployee(e.target.value)}
               >
-                {/* 🔒 TL ko "All Employees" kabhi nahi dikhega */}
                 {role !== "TL" && <option value="">All Employees</option>}
-
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.name || emp.email}
@@ -1379,138 +1547,130 @@ export default function Dashboard() {
               </select>
             )}
 
-            {/* MONTH dropdown – now safe */}
+            {/* Month Select */}
             {rangeType === "MONTH" && (
               <select
-                className="h-9 px-3 rounded-lg border border-gray-300 text-sm bg-white"
+                className="h-8 px-3 rounded-xl border border-slate-200/90 text-xs font-semibold text-slate-700 bg-slate-50/50 hover:border-slate-300 focus:outline-none transition-colors shadow-2xs"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
               >
-                {Array.from({ length: 36 }).map((_, i) => {
-                  const d = new Date();
-                  d.setDate(1); // 🔥 VERY IMPORTANT (fix bug)
-                  d.setMonth(d.getMonth() - i);
-
-                  const value = `${d.getFullYear()}-${String(
-                    d.getMonth() + 1,
-                  ).padStart(2, "0")}`;
-
-                  return (
-                    <option key={value} value={value}>
-                      {d.toLocaleString("default", {
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </option>
-                  );
-                })}
+                {getFYMonths(selectedFY).map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
+                  </option>
+                ))}
               </select>
             )}
-
-            <button
-              onClick={exportToExcel}
-              className="h-9 px-4 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700"
-            >
-              Export Report
-            </button>
           </div>
         </div>
       </div>
-      {/* STATS */}
-      <div className="grid grid-cols-12 gap-6">
-        {/* Monthly Target */}
-        <div className="col-span-12 md:col-span-3 bg-white rounded-2xl border shadow-sm p-5">
-          <p className="text-sm font-medium text-gray-500">
-            {rangeType === "DAILY"
-              ? "Daily Target"
-              : rangeType === "WEEK"
+
+      {/* 5 UNIFORM KPI CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Card 1: Target */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              {rangeType === "DAILY"
+                ? "Daily Target"
+                : rangeType === "WEEK"
                 ? "Weekly Target"
                 : rangeType === "YEAR"
-                  ? "Yearly Target"
-                  : "Monthly Target"}
-          </p>
-
-          <h3 className="mt-2 text-2xl lg:text-3xl font-bold text-indigo-700">
-            ₹{Number(getAdjustedCompanyTarget() || 0).toLocaleString("en-IN")}
-          </h3>
-
-          <p className="mt-1 text-sm text-gray-400">Sales Team</p>
-        </div>
-
-        {/* Achieved */}
-        <div className="col-span-12 md:col-span-3 bg-white rounded-2xl border shadow-sm p-5">
-          <p className="text-sm font-medium text-gray-500">
-            Achieved ({rangeType.toLowerCase()})
-          </p>
+                ? "Yearly Target"
+                : "Monthly Target"}
+            </p>
+            <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/80">
+              <BanknotesIcon className="w-5 h-5" />
+            </div>
+          </div>
 
           <div>
-            <h3 className="text-3xl font-extrabold text-green-600 leading-tight">
-              ₹{finalCompanyAchieved.toLocaleString("en-IN")}
+            <h3 className="text-xl lg:text-2xl font-black text-indigo-700 tracking-tight">
+              ₹{Number(activeKpiData.target || 0).toLocaleString("en-IN")}
             </h3>
+            <span className="mt-1 inline-block text-[10px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 truncate max-w-full">
+              {activeKpiData.targetLabel}
+            </span>
+          </div>
+        </div>
 
-            {rangeType === "YEAR" && excelCompanyTotal > 0 && (
-              <p className="text-[11px] text-blue-500 mt-1">
+        {/* Card 2: Achieved */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Achieved ({rangeType.toLowerCase()})
+            </p>
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100/80">
+              <ArrowTrendingUpIcon className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xl lg:text-2xl font-black text-emerald-600 tracking-tight">
+              ₹{Number(activeKpiData.achieved || 0).toLocaleString("en-IN")}
+            </h3>
+            {rangeType === "YEAR" && excelCompanyTotal > 0 && !activeKpiData.isFiltered && (
+              <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
                 + ₹{excelCompanyTotal.toLocaleString("en-IN")} from Excel
               </p>
             )}
-          </div>
-
-          <p className="text-xs text-gray-400">Based on selected range</p>
-        </div>
-        {/* ACHIEVEMENT % (compact card) */}
-        <div className="col-span-12 md:col-span-2 bg-white rounded-2xl border shadow-sm p-5">
-          <p className="text-sm font-medium text-gray-500">Achievement %</p>
-
-          <p className="text-3xl font-extrabold text-green-600">
-            {companyPercent}%
-          </p>
-
-          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-500"
-              style={{ width: `${Math.min(companyPercent, 100)}%` }}
-            />
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">{activeKpiData.achievedSubtext}</p>
           </div>
         </div>
 
-        {/* TOTAL CALLS*/}
-        {/* <div className="bg-white rounded-2xl border shadow-sm p-5 flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500">Total Calls</p>
-            <h2 className="text-3xl font-semibold text-blue-600">
-              {stats.calls}
-            </h2>
-          </div>
-          <div className="p-3 bg-blue-50 rounded-full">
-            <PhoneIcon className="w-6 h-6 text-blue-600" />
-          </div>
-        </div> */}
-        <div className="col-span-12 md:col-span-2 bg-white rounded-2xl border shadow-sm p-5">
-          <p className="text-sm text-gray-500">Total Calls</p>
-          <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-semibold text-blue-600">
-              {stats.calls}
-            </h2>
-            <div className="p-3 bg-blue-50 rounded-full">
-              <PhoneIcon className="w-6 h-6 text-blue-600" />
+        {/* Card 3: Achievement % */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Achievement %</p>
+            <div className="p-2 rounded-xl bg-green-50 text-green-600 border border-green-100/80">
+              <CheckBadgeIcon className="w-5 h-5" />
             </div>
           </div>
-          <span /> {/* spacer */}
+
+          <div>
+            <p className="text-xl lg:text-2xl font-black text-green-600 tracking-tight">
+              {activeKpiData.percent}%
+            </p>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200/40">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full"
+                style={{ width: `${Math.min(activeKpiData.percent, 100)}%` }}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* PERFORMANCE*/}
-        <div className="col-span-12 md:col-span-2 bg-white rounded-2xl border shadow-sm p-5">
-          <div>
-            <p className="text-sm text-gray-500">Performance</p>
-            <h2 className="text-3xl font-semibold text-purple-600">
-              {stats.calls
-                ? Math.round((stats.positive / stats.calls) * 100)
-                : 0}
-              %
-            </h2>
+        {/* Card 4: Total Calls */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Calls</p>
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80">
+              <PhoneIcon className="w-5 h-5" />
+            </div>
           </div>
-          <div className="p-3 bg-purple-50 rounded-full">
-            <ChartBarIcon className="w-6 h-6 text-purple-600" />
+
+          <div>
+            <h2 className="text-xl lg:text-2xl font-black text-blue-600 tracking-tight">
+              {activeKpiData.calls}
+            </h2>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Logged customer calls</p>
+          </div>
+        </div>
+
+        {/* Card 5: Performance */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+          <div className="flex justify-between items-start">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Performance</p>
+            <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100/80">
+              <ChartBarIcon className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-xl lg:text-2xl font-black text-purple-600 tracking-tight">
+              {activeKpiData.perf}%
+            </h2>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Conversion score</p>
           </div>
         </div>
       </div>
@@ -1544,35 +1704,35 @@ export default function Dashboard() {
           />
         </div>
       )}
-      <div className="grid lg:grid-cols-2 gap-6 mt-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+        <div className="col-span-12 lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-sm text-gray-500">Sales Person Achievement</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Sales Person Achievement</h3>
 
             <button
               onClick={exportEmployeeAchievement}
-              className="text-xs px-4 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700"
+              className="text-xs font-bold px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all flex items-center gap-1"
             >
               Export
             </button>
           </div>
           {/* EMPLOYEE TABLE */}
-          <div className="mt-6 overflow-hidden rounded-xl border bg-white">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 {/* HEADER */}
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-slate-50/90 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                    <th className="px-4 py-3.5 text-left font-bold text-slate-700 uppercase tracking-wider text-[11px]">
                       Employee
                     </th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                    <th className="px-4 py-3.5 text-right font-bold text-slate-700 uppercase tracking-wider text-[11px]">
                       Target
                     </th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                    <th className="px-4 py-3.5 text-right font-bold text-slate-700 uppercase tracking-wider text-[11px]">
                       Achieved
                     </th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                    <th className="px-4 py-3.5 text-right font-bold text-slate-700 uppercase tracking-wider text-[11px]">
                       Progress
                     </th>
                   </tr>
@@ -1698,13 +1858,22 @@ export default function Dashboard() {
                         hover:bg-blue-50`}
                       >
                         {/* NAME */}
-                        <td className="px-4 py-3 font-medium text-gray-800">
-                          {e.name}
-                          {e.excelOnly && (
-                            <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-600">
-                              From Excel
-                            </span>
-                          )}
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center text-[10px] font-bold text-slate-600 flex-shrink-0">
+                              {e.photoUrl ? (
+                                <img src={e.photoUrl} alt={e.name} className="w-full h-full object-cover" />
+                              ) : (
+                                e.name ? e.name.substring(0, 2) : "U"
+                              )}
+                            </div>
+                            <span>{e.name}</span>
+                            {e.excelOnly && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold border border-blue-100">
+                                From Excel
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* TARGET */}
@@ -1726,10 +1895,22 @@ export default function Dashboard() {
                         </td>
 
                         {/* PROGRESS */}
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-600">
-                          {employeePercent > 100
-                            ? "100%+"
-                            : `${employeePercent}%`}
+                        <td className="px-4 py-3.5 text-right font-bold text-xs whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full border text-[11px] font-extrabold ${
+                              employeePercent >= 100
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : employeePercent >= 50
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : employeePercent > 0
+                                ? "bg-amber-50 text-amber-800 border-amber-200"
+                                : "bg-slate-50 text-slate-400 border-slate-200"
+                            }`}
+                          >
+                            {employeePercent > 100
+                              ? "100%+"
+                              : `${employeePercent}%`}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -1740,6 +1921,8 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* RIGHT SIDE COLUMN (4 COLS) */}
+        <div className="col-span-12 lg:col-span-4">
         {focusedEmployee ? (
           (() => {
             // ======= COMMON DATA (ONE TIME) =======
@@ -1775,79 +1958,59 @@ export default function Dashboard() {
 
             // ======= UI =======
             return (
-              <div className="bg-white p-6 rounded-2xl shadow-lg space-y-6 border">
+              <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200/90 space-y-5">
                 {/* HEADER */}
-                <div className="flex justify-between items-center border-b pb-4">
+                <div className="flex justify-between items-start border-b border-slate-100 pb-3.5">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-800">
+                    <h3 className="text-lg font-black text-slate-800 tracking-tight">
                       {focusedEmployee.name}
                     </h3>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-slate-500 font-medium">
                       Employee Performance • {rangeType.toLowerCase()}
                     </p>
                   </div>
 
                   <button
                     onClick={() => setFocusedEmployee(null)}
-                    className="text-xs px-4 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200"
+                    className="text-xs font-bold px-3 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
                   >
                     ← Back
                   </button>
                 </div>
 
-                {/* 🎯 PERFORMANCE BANNER (TotalSale = Firebase + Excel) */}
+                {/* 🎯 PERFORMANCE BANNER */}
                 {focusedPercent >= 100 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                    <p className="text-sm font-semibold text-green-700">
-                      🎯 Performance of the{" "}
-                      {rangeType === "DAILY"
-                        ? "Day"
-                        : rangeType === "WEEK"
-                          ? "Week"
-                          : rangeType === "YEAR"
-                            ? "Year"
-                            : "Month"}
+                  <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-3">
+                    <p className="text-xs font-bold text-emerald-800">
+                      🎯 Star Performer ({rangeType})
                     </p>
-
-                    <p className="text-xs text-green-600">
-                      ({focusedEmployee.name}) • ₹
-                      {totalSale.toLocaleString("en-IN")} / ₹
-                      {Number(effectiveTarget || 0).toLocaleString("en-IN")} •{" "}
-                      {focusedPercent}%
+                    <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                      ₹{totalSale.toLocaleString("en-IN")} / ₹{Number(effectiveTarget || 0).toLocaleString("en-IN")} ({focusedPercent}%)
                     </p>
                   </div>
                 )}
 
                 {/* TARGET vs ACHIEVEMENT */}
-                <div>
-                  <p className="text-sm font-medium text-gray-500 mb-2">
-                    Target vs Achievement
-                  </p>
-                  <p className="text-xs text-gray-500 mb-2">
-                    FY {selectedFY} (1 Apr {selectedFY.split("-")[0]} – 31 Mar{" "}
-                    {Number(selectedFY.split("-")[0]) + 1})
-                  </p>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-600">Target vs Achievement</span>
+                    <span className="text-[11px] font-semibold text-slate-400">FY {selectedFY}</span>
+                  </div>
 
-                  <div className="flex items-center gap-4">
-                    {/* BAR */}
+                  <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <div className="flex justify-between text-sm font-medium mb-1">
-                        <span className="text-green-600">
-                          ₹{totalSale.toLocaleString("en-IN")}
-                        </span>
-                        <span className="text-gray-500">
-                          ₹
-                          {Number(effectiveTarget || 0).toLocaleString("en-IN")}
-                        </span>
+                      <div className="flex justify-between text-xs font-bold mb-1">
+                        <span className="text-emerald-600">₹{totalSale.toLocaleString("en-IN")}</span>
+                        <span className="text-slate-400">₹{Number(effectiveTarget || 0).toLocaleString("en-IN")}</span>
                       </div>
 
-                      <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
                         <div
-                          className={`h-full transition-all duration-500 ${
+                          className={`h-full transition-all duration-500 rounded-full ${
                             focusedPercent >= 70
-                              ? "bg-green-500"
+                              ? "bg-emerald-500"
                               : focusedPercent >= 30
-                                ? "bg-yellow-500"
+                                ? "bg-amber-500"
                                 : "bg-red-500"
                           }`}
                           style={{ width: `${Math.min(focusedPercent, 100)}%` }}
@@ -1855,40 +2018,34 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* CIRCLE */}
                     <div
-                      className={`w-16 h-16 rounded-full flex items-center justify-center
-              text-sm font-bold shadow-inner
-              ${
-                focusedPercent >= 100
-                  ? "bg-green-100 text-green-700"
-                  : focusedPercent >= 30
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-red-100 text-red-700"
-              }`}
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xs font-black shadow-2xs border flex-shrink-0 ${
+                        focusedPercent >= 100
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : focusedPercent >= 30
+                            ? "bg-amber-50 text-amber-800 border-amber-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                      }`}
                     >
                       {focusedPercent}%
                     </div>
                   </div>
                 </div>
 
-                {/* STATS */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* STATS GRID */}
+                <div className="grid grid-cols-2 gap-3">
                   <StatBox
                     label="Current Sale"
                     value={`₹${currentSale.toLocaleString("en-IN")}`}
-                    icon={
-                      <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
-                    }
+                    green
+                    icon={<ArrowTrendingUpIcon className="w-4 h-4 text-emerald-600" />}
                   />
 
                   {rangeType === "YEAR" && (
                     <StatBox
                       label="From Excel"
                       value={`₹${excelSale.toLocaleString("en-IN")}`}
-                      icon={
-                        <DocumentChartBarIcon className="w-5 h-5 text-blue-600" />
-                      }
+                      icon={<DocumentChartBarIcon className="w-4 h-4 text-blue-600" />}
                     />
                   )}
 
@@ -1896,28 +2053,25 @@ export default function Dashboard() {
                     label="Total Sale"
                     value={`₹${totalSale.toLocaleString("en-IN")}`}
                     green
-                    icon={
-                      <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
-                    }
+                    icon={<ArrowTrendingUpIcon className="w-4 h-4 text-emerald-600" />}
                   />
 
                   <StatBox
                     label="Calls"
                     value={stats.calls}
-                    icon={<PhoneIcon className="w-5 h-5 text-blue-600" />}
+                    icon={<PhoneIcon className="w-4 h-4 text-blue-600" />}
                   />
                 </div>
               </div>
             );
           })()
         ) : (
-          <div className="bg-white p-6 rounded-2xl shadow border">
-            <h3 className="text-sm font-semibold text-gray-600 mb-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-4">
               Company Summary
             </h3>
 
             <div className="space-y-3 text-sm">
-              {/* <Row label="Total Sale" value={`₹${stats.sale}`} /> */}
               <Row
                 label="Total Sale"
                 value={`₹${companySummarySale.toLocaleString("en-IN")}`}
@@ -1927,15 +2081,16 @@ export default function Dashboard() {
               <Row
                 label="Performance %"
                 value={`${
-                  stats.calls
+                  stats.calls && stats.positive > 0
                     ? Math.round((stats.positive / stats.calls) * 100)
-                    : 0
+                    : companyPercent || 0
                 }%`}
                 green
               />
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -1967,21 +2122,21 @@ const Row = ({ label, value, green, red }) => (
     </span>
   </div>
 );
+
 const StatBox = ({ label, value, green, icon }) => (
-  <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border shadow-sm">
-    <div className="flex items-center gap-3">
-      {icon && <div className="p-2 rounded-lg bg-gray-100">{icon}</div>}
-      <div>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p
-          className={`text-xl font-bold ${
-            green ? "text-green-600" : "text-gray-800"
-          }`}
-        >
-          {value}
-        </p>
-      </div>
+  <div className="bg-slate-50/80 rounded-2xl p-3 border border-slate-200/80 shadow-2xs flex flex-col justify-between min-w-0">
+    <div className="flex justify-between items-center mb-1">
+      <p className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider truncate">{label}</p>
+      {icon && <div className="p-1 rounded-lg bg-white border border-slate-200/60 flex-shrink-0">{icon}</div>}
     </div>
+    <p
+      className={`text-sm sm:text-base font-black truncate ${
+        green ? "text-emerald-600" : "text-slate-800"
+      }`}
+      title={String(value)}
+    >
+      {value}
+    </p>
   </div>
 );
 const TargetCard = ({ title, achieved, target, prefix = "" }) => {

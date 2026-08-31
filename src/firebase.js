@@ -6,8 +6,8 @@ const firebaseConfig = {
   apiKey: "AIzaSyBdMGOQvJEIee6uWYoPslxkncIexzijlS0",
   authDomain: "sale-performance-tracker.firebaseapp.com",
   projectId: "sale-performance-tracker",
-  storageBucket: "sale-performance-tracker.firebasestorage.app",
   // storageBucket: "sale-performance-tracker.appspot.com",
+  storageBucket: "sale-performance-tracker.firebasestorage.app",
   messagingSenderId: "302921583424",
   appId: "1:302921583424:web:9b15214e687258cd60c8a5",
 };
@@ -20,7 +20,4 @@ const secondaryApp = initializeApp(firebaseConfig, "SECONDARY");
 export const secondaryAuth = getAuth(secondaryApp);
 
 export const db = getFirestore(app);
-export const storage = getStorage(
-  app,
-  "gs://sale-performance-tracker.firebasestorage.app"
-);
+export const storage = getStorage(app);

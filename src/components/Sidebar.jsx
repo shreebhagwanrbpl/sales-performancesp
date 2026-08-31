@@ -12,6 +12,7 @@ import {
   CurrencyRupeeIcon,
   ChartBarIcon,
   ArchiveBoxIcon,
+  TrophyIcon,
 } from "@heroicons/react/24/outline";
 import logo from "../assets/logo.png";
 
@@ -22,7 +23,7 @@ export default function Sidebar() {
   const [openAdmin, setOpenAdmin] = useState(false);
   const isActive = (path) =>
     pathname === path
-      ? "bg-indigo-50 text-indigo-600"
+      ? "bg-indigo-50 text-indigo-600 font-semibold"
       : "text-gray-600 hover:bg-gray-100";
 
   return (
@@ -53,6 +54,18 @@ export default function Sidebar() {
           >
             <HomeIcon className="w-5 h-5" />
             Dashboard
+          </Link>
+        )}
+
+        {(role === "EMPLOYEE" || role === "TL" || role === "ADMIN") && (
+          <Link
+            to="/eotm-list"
+            className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${isActive(
+              "/eotm-list",
+            )}`}
+          >
+            <TrophyIcon className="w-5 h-5 text-amber-500" />
+            EOTM List
           </Link>
         )}
 
