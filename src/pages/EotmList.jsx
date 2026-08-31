@@ -170,11 +170,11 @@ export default function EotmList() {
                   })
                   .filter(Boolean);
 
-                // Filter out future months (only show current and past months)
+                // Filter to ONLY show current month winner
                 const now = new Date();
                 const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
                 
-                const validWinnersList = winnersList.filter((item) => item.monthKey <= currentMonthKey);
+                const validWinnersList = winnersList.filter((item) => item.monthKey === currentMonthKey);
 
                 // Sort history by Date descending (latest month first)
                 validWinnersList.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
@@ -224,16 +224,16 @@ export default function EotmList() {
             WALL OF FAME
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-            Employee of the Month History
+            Employee of the Month
           </h1>
           <p className="text-xs text-amber-100 font-medium">
-            Automatic month-by-month record of top performing stars.
+            Current month top performing sales star record.
           </p>
         </div>
 
         <div className="bg-white/15 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 text-center z-10">
-          <span className="text-xs font-bold text-amber-100 uppercase tracking-wider block">Total Honors</span>
-          <span className="text-2xl font-black text-white">{historyList.length} Months</span>
+          <span className="text-xs font-bold text-amber-100 uppercase tracking-wider block">Current Status</span>
+          <span className="text-2xl font-black text-white">Active Winner</span>
         </div>
       </div>
 
