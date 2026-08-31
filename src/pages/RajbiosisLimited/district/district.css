@@ -309,3 +309,175 @@
     font-size: 34px;
   }
 }
+
+/* ================= WEBSITE SELECTOR CARD ================= */
+
+.district-website-selector-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.district-website-selector-card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.district-dropdowns-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.district-select-wrapper {
+  flex: 1;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.district-select-wrapper label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.district-select-wrapper select {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  background-color: #fff;
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.district-select-wrapper select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* ================= TABLE ACTION BUTTONS ================= */
+
+.district-remove-btn {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.district-remove-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.district-delete-btn {
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+}
+
+.district-delete-btn:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.district-delete-btn:active {
+  transform: translateY(0);
+}
+
+/* ================= HEADER ROW & BADGES ================= */
+
+.district-table-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  margin-bottom: 20px;
+}
+
+.district-table-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #4f46e5;
+  margin: 0;
+}
+
+.district-count-badge {
+  background: #eef2ff;
+  color: #4f46e5;
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid #c7d2fe;
+}
+
+/* ================= HIGHLIGHT & STATUS COLORING ================= */
+
+.district-highlight-text {
+  font-size: 24px;
+  color: #4f46e5;
+  font-weight: 700;
+}
+
+.district-yellow {
+  color: #d97706 !important;
+}
+
+/* ================= LOADING INDICATOR ================= */
+
+.district-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 15px;
+}
+
+.district-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #4f46e5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.district-loading-state p {
+  font-size: 15px;
+  color: #64748b;
+  font-weight: 500;
+  margin: 0;
+}
