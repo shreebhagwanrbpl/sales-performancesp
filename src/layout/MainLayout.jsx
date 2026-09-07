@@ -49,7 +49,6 @@ export default function MainLayout() {
         {/* HEADER – FIXED */}
         <div className="h-16 bg-white shadow-xs px-6 flex justify-between items-center flex-shrink-0 border-b border-slate-200/80">
           <h1 className="font-extrabold text-lg text-slate-800 tracking-tight">Sales System</h1>
-
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               {/* Profile Avatar */}

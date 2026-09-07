@@ -15,6 +15,14 @@ export default function EotmList() {
   const role = localStorage.getItem("role") || "EMPLOYEE";
   const [historyList, setHistoryList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTabFilter, setActiveTabFilter] = useState(() => {
+    const userRole = localStorage.getItem("role") || "EMPLOYEE";
+    if (userRole !== "ADMIN") return "PREVIOUS";
+    const day = new Date().getDate();
+    return day <= 10 ? "PREVIOUS" : "ALL";
+  });
+  const [currentMonthStr, setCurrentMonthStr] = useState("");
+  const [prevMonthStr, setPrevMonthStr] = useState("");
 
   const normalizeName = (name = "") => {
     return name
@@ -24,11 +32,44 @@ export default function EotmList() {
       .trim();
   };
 
-  const getFirstName = (name = "") => {
-    return normalizeName(name).split(" ")[0];
+  const findMatchingEmpKey = (targetMap, rawPerson = "") => {
+    const normRaw = normalizeName(rawPerson);
+    if (!normRaw) return null;
+
+    const keys = Object.keys(targetMap);
+
+    let matched = keys.find((key) => key === normRaw);
+    if (matched) return matched;
+
+    matched = keys.find((key) => key.includes(normRaw) || normRaw.includes(key));
+    if (matched) return matched;
+
+    const firstName = normRaw.split(" ")[0];
+    if (firstName && firstName.length > 2) {
+      const candidates = keys.filter((key) => {
+        const kFirst = key.split(" ")[0];
+        return key === firstName || kFirst === firstName;
+      });
+
+      if (candidates.length === 1) {
+        return candidates[0];
+      }
+    }
+
+    return normRaw;
   };
 
   useEffect(() => {
+    const now = new Date();
+    const currMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    setCurrentMonthStr(currMonthDate.toLocaleString("default", { month: "long", year: "numeric" }));
+    setPrevMonthStr(prevMonthDate.toLocaleString("default", { month: "long", year: "numeric" }));
+
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
     const unsubSales = onSnapshot(collection(db, "sales"), (salesSnap) => {
       onSnapshot(collection(db, "excel_sales_raw"), (excelSnap) => {
         onSnapshot(collection(db, "users"), (usersSnap) => {
@@ -52,18 +93,37 @@ export default function EotmList() {
                 // Group sales by Month (YYYY-MM)
                 const monthlySalesGroup = {};
 
-                // Process Firestore sales
-                salesSnap.docs.forEach((doc) => {
-                  const data = doc.data();
-                  let dateObj = new Date();
-                  if (data.createdAtMs) {
-                    dateObj = new Date(data.createdAtMs);
-                  } else if (data.createdAt) {
-                    dateObj = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+                // Helper to extract dateObj & monthKey
+                const processDocDate = (data) => {
+                  let dateObj = null;
+                  if (data.createdAtMs && typeof data.createdAtMs === "number") dateObj = new Date(data.createdAtMs);
+                  else if (data.dateMs && typeof data.dateMs === "number") dateObj = new Date(data.dateMs);
+                  else if (data.createdAt) {
+                    if (typeof data.createdAt.toMillis === "function") dateObj = new Date(data.createdAt.toMillis());
+                    else if (typeof data.createdAt.toDate === "function") dateObj = data.createdAt.toDate();
+                    else dateObj = new Date(data.createdAt);
+                  } else if (data.uploadedAt) {
+                    if (typeof data.uploadedAt.toMillis === "function") dateObj = new Date(data.uploadedAt.toMillis());
+                    else if (typeof data.uploadedAt.toDate === "function") dateObj = data.uploadedAt.toDate();
+                    else dateObj = new Date(data.uploadedAt);
+                  } else if (data.date || data.billDate || data.invoiceDate) {
+                    dateObj = new Date(data.date || data.billDate || data.invoiceDate);
                   }
+
+                  if (!dateObj || isNaN(dateObj.getTime())) return null;
 
                   const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
                   const monthLabel = dateObj.toLocaleString("default", { month: "long", year: "numeric" });
+                  return { dateObj, monthKey, monthLabel };
+                };
+
+                // Process Firestore sales
+                salesSnap.docs.forEach((doc) => {
+                  const data = doc.data();
+                  const dateInfo = processDocDate(data);
+                  if (!dateInfo) return;
+
+                  const { monthKey, monthLabel, dateObj } = dateInfo;
 
                   if (!monthlySalesGroup[monthKey]) {
                     monthlySalesGroup[monthKey] = {
@@ -98,15 +158,10 @@ export default function EotmList() {
                   const rawPerson = data.salesPerson || data.employeeName || "";
                   if (!rawPerson || !amt) return;
 
-                  let dateObj = new Date();
-                  if (data.dateMs) {
-                    dateObj = new Date(data.dateMs);
-                  } else if (data.uploadedAt) {
-                    dateObj = data.uploadedAt.toDate ? data.uploadedAt.toDate() : new Date(data.uploadedAt);
-                  }
+                  const dateInfo = processDocDate(data);
+                  if (!dateInfo) return;
 
-                  const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
-                  const monthLabel = dateObj.toLocaleString("default", { month: "long", year: "numeric" });
+                  const { monthKey, monthLabel, dateObj } = dateInfo;
 
                   if (!monthlySalesGroup[monthKey]) {
                     monthlySalesGroup[monthKey] = {
@@ -117,12 +172,9 @@ export default function EotmList() {
                     };
                   }
 
-                  const firstName = getFirstName(rawPerson);
-                  let matchedKey = Object.keys(monthlySalesGroup[monthKey].empMap).find(
-                    (key) => key.includes(firstName) || firstName.includes(key.split(" ")[0])
-                  );
+                  let matchedKey = findMatchingEmpKey(monthlySalesGroup[monthKey].empMap, rawPerson);
 
-                  if (!matchedKey) {
+                  if (!matchedKey || !monthlySalesGroup[monthKey].empMap[matchedKey]) {
                     matchedKey = normalizeName(rawPerson);
                     monthlySalesGroup[monthKey].empMap[matchedKey] = {
                       name: rawPerson,
@@ -136,12 +188,14 @@ export default function EotmList() {
                   monthlySalesGroup[monthKey].empMap[matchedKey].dealCount += 1;
                 });
 
-                // Compute #1 winner for each month
+                // Compute #1 winner for each month (ONLY employees with totalAmount > 0)
                 const winnersList = Object.values(monthlySalesGroup)
                   .map((monthData) => {
-                    const sortedEmps = Object.values(monthData.empMap).sort((a, b) => b.totalAmount - a.totalAmount);
-                    const topEmp = sortedEmps[0] || null;
+                    const sortedEmps = Object.values(monthData.empMap)
+                      .filter((emp) => emp.totalAmount > 0)
+                      .sort((a, b) => b.totalAmount - a.totalAmount);
 
+                    const topEmp = sortedEmps[0] || null;
                     if (!topEmp) return null;
 
                     // Match with user/employee profiles
@@ -166,38 +220,24 @@ export default function EotmList() {
                       totalAmount: topEmp.totalAmount,
                       dealCount: topEmp.dealCount,
                       achievementPercent,
+                      isCurrentMonth: monthData.monthKey === currentMonthKey,
+                      isPrevMonth: monthData.monthKey === prevMonthKey,
                     };
                   })
                   .filter(Boolean);
 
-                // Filter to ONLY show current month winner
-                const now = new Date();
-                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-                
-                const validWinnersList = winnersList.filter((item) => item.monthKey === currentMonthKey);
+                // Filter out future months and current month during first 10 days
+                const isFirst10Days = now.getDate() <= 10;
+                const validWinnersList = winnersList.filter((item) => {
+                  if (item.monthKey > currentMonthKey) return false; // No future months (e.g. October)
+                  if (item.monthKey === currentMonthKey && isFirst10Days) return false; // Block September during days 1-10
+                  return true;
+                });
 
                 // Sort history by Date descending (latest month first)
                 validWinnersList.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
 
-                // Fallback demo data if empty
-                if (validWinnersList.length === 0) {
-                  setHistoryList([
-                    {
-                      monthKey: currentMonthKey,
-                      monthLabel: now.toLocaleString("default", { month: "long", year: "numeric" }),
-                      name: "Nikita Rajawat",
-                      email: "nikita@rajbiosis.com",
-                      department: "Sales Department",
-                      designation: "Sales Executive",
-                      photoUrl: "",
-                      totalAmount: 4578654,
-                      dealCount: 894,
-                      achievementPercent: 180,
-                    },
-                  ]);
-                } else {
-                  setHistoryList(validWinnersList);
-                }
+                setHistoryList(validWinnersList);
               } catch (err) {
                 console.error("EOTM List calculation error:", err);
               } finally {
@@ -211,6 +251,13 @@ export default function EotmList() {
 
     return () => unsubSales();
   }, []);
+
+  // Filter history based on active tab filter
+  const filteredList = historyList.filter((item) => {
+    if (activeTabFilter === "CURRENT") return item.isCurrentMonth;
+    if (activeTabFilter === "PREVIOUS") return item.isPrevMonth;
+    return true; // ALL
+  });
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -227,15 +274,60 @@ export default function EotmList() {
             Employee of the Month
           </h1>
           <p className="text-xs text-amber-100 font-medium">
-            Current month top performing sales star record.
+            Monthly top performing sales stars hall of fame records.
           </p>
         </div>
 
-        <div className="bg-white/15 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 text-center z-10">
-          <span className="text-xs font-bold text-amber-100 uppercase tracking-wider block">Current Status</span>
-          <span className="text-2xl font-black text-white">Active Winner</span>
+        {/* MONTH FILTER TABS */}
+        <div className="bg-white/15 backdrop-blur-md p-1.5 rounded-2xl border border-white/20 flex items-center gap-1 z-10">
+          {role === "ADMIN" && (
+            <button
+              onClick={() => setActiveTabFilter("ALL")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                activeTabFilter === "ALL"
+                  ? "bg-white text-amber-950 shadow-sm"
+                  : "text-amber-100 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              All Months 🏆
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTabFilter("PREVIOUS")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+              activeTabFilter === "PREVIOUS"
+                ? "bg-white text-amber-950 shadow-sm"
+                : "text-amber-100 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            EOTM 🏆
+          </button>
+          {new Date().getDate() > 10 && (
+            <button
+              onClick={() => setActiveTabFilter("CURRENT")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                activeTabFilter === "CURRENT"
+                  ? "bg-white text-amber-950 shadow-sm"
+                  : "text-amber-100 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              Current ({currentMonthStr.split(" ")[0]})
+            </button>
+          )}
         </div>
       </div>
+
+      {/* NEW MONTH STARTED NOTICE BANNER IF CURRENT MONTH HAS NO SALES YET */}
+      {activeTabFilter === "CURRENT" && filteredList.length === 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-2xl p-4 text-center space-y-1">
+          <p className="text-sm font-black text-amber-900">
+            🚀 {currentMonthStr} has just started!
+          </p>
+          <p className="text-xs text-amber-700 font-medium">
+            No sales closed yet for {currentMonthStr}. Switch to &ldquo;All Months&rdquo; or &ldquo;EOTM&rdquo; to view past star performers.
+          </p>
+        </div>
+      )}
 
       {/* HISTORICAL EOTM LIST CARDS */}
       {loading ? (
@@ -244,7 +336,7 @@ export default function EotmList() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {historyList.map((item, idx) => (
+          {filteredList.map((item, idx) => (
             <div
               key={item.monthKey || idx}
               className="bg-white rounded-3xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all p-5 flex flex-col justify-between space-y-4 group relative overflow-hidden"

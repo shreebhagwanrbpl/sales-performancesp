@@ -20,6 +20,7 @@ import {
 
 export default function EmployeeOfTheMonth() {
   const role = localStorage.getItem("role") || "EMPLOYEE";
+  const isFirst10Days = new Date().getDate() <= 10;
   const [filterMode, setFilterMode] = useState("MONTH"); // "MONTH" | "YEAR" | "WEEK" | "DAILY"
   const [topEmployee, setTopEmployee] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -36,12 +37,71 @@ export default function EmployeeOfTheMonth() {
       .trim();
   };
 
-  const getFirstName = (name = "") => {
-    return normalizeName(name).split(" ")[0];
+  const findMatchingEmpKey = (targetMap, rawPerson = "") => {
+    const normRaw = normalizeName(rawPerson);
+    if (!normRaw) return null;
+
+    const keys = Object.keys(targetMap);
+
+    // 1. Exact full normalized name match
+    let matched = keys.find((key) => key === normRaw);
+    if (matched) return matched;
+
+    // 2. Contains full normalized name
+    matched = keys.find((key) => key.includes(normRaw) || normRaw.includes(key));
+    if (matched) return matched;
+
+    // 3. First name match ONLY if unique (no ambiguous collision)
+    const firstName = normRaw.split(" ")[0];
+    if (firstName && firstName.length > 2) {
+      const candidates = keys.filter((key) => {
+        const kFirst = key.split(" ")[0];
+        return key === firstName || kFirst === firstName;
+      });
+
+      if (candidates.length === 1) {
+        return candidates[0];
+      }
+    }
+
+    return normRaw;
   };
 
   // Helper to compute date boundaries
-  const getDateBoundaries = (mode) => {
+
+  const [monthSubFilter, setMonthSubFilter] = useState(() => {
+    return isFirst10Days ? "PREVIOUS" : "CURRENT";
+  });
+
+  const getDocTimestampMs = (data) => {
+    if (data.createdAtMs && typeof data.createdAtMs === "number") return data.createdAtMs;
+    if (data.dateMs && typeof data.dateMs === "number") return data.dateMs;
+
+    const saleDateStr = data.purchaseDate || data.date || data.billDate || data.invoiceDate;
+    if (saleDateStr) {
+      const parsed = new Date(saleDateStr).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    if (data.createdAt) {
+      if (typeof data.createdAt.toMillis === "function") return data.createdAt.toMillis();
+      if (typeof data.createdAt.toDate === "function") return data.createdAt.toDate().getTime();
+      const parsed = new Date(data.createdAt).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    if (data.uploadedAt) {
+      if (typeof data.uploadedAt.toMillis === "function") return data.uploadedAt.toMillis();
+      if (typeof data.uploadedAt.toDate === "function") return data.uploadedAt.toDate().getTime();
+      const parsed = new Date(data.uploadedAt).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    return null;
+  };
+
+  // Helper to compute date boundaries
+  const getDateBoundaries = (mode, subMonth = "CURRENT") => {
     const now = new Date();
     let start, end;
 
@@ -60,9 +120,17 @@ export default function EmployeeOfTheMonth() {
       start = new Date(startYear, 3, 1, 0, 0, 0).getTime();
       end = new Date(startYear + 1, 2, 31, 23, 59, 59).getTime();
     } else {
-      // MONTH (default)
-      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0).getTime();
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime();
+      // MONTH
+      let year = now.getFullYear();
+      let month = now.getMonth(); // 0-indexed
+      // First 10 days of the month ALWAYS forces PREVIOUS month
+      if (isFirst10Days || subMonth === "PREVIOUS") {
+        const prevDate = new Date(year, month - 1, 1);
+        year = prevDate.getFullYear();
+        month = prevDate.getMonth();
+      }
+      start = new Date(year, month, 1, 0, 0, 0).getTime();
+      end = new Date(year, month + 1, 0, 23, 59, 59).getTime();
     }
 
     return { start, end };
@@ -70,7 +138,12 @@ export default function EmployeeOfTheMonth() {
 
   useEffect(() => {
     const now = new Date();
-    const monthStr = now.toLocaleString("default", { month: "long", year: "numeric" });
+    const currMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const currMonthStr = currMonthDate.toLocaleString("default", { month: "long", year: "numeric" });
+    const prevMonthStr = prevMonthDate.toLocaleString("default", { month: "long", year: "numeric" });
+
     if (filterMode === "YEAR") {
       const m = now.getMonth();
       const y = now.getFullYear();
@@ -81,10 +154,11 @@ export default function EmployeeOfTheMonth() {
     } else if (filterMode === "DAILY") {
       setMonthTitle(`TODAY (${now.toLocaleDateString()})`);
     } else {
-      setMonthTitle(monthStr.toUpperCase());
+      const effectiveSub = isFirst10Days ? "PREVIOUS" : monthSubFilter;
+      setMonthTitle(effectiveSub === "PREVIOUS" ? prevMonthStr.toUpperCase() : currMonthStr.toUpperCase());
     }
 
-    const { start: rangeStartMs, end: rangeEndMs } = getDateBoundaries(filterMode);
+    const { start: rangeStartMs, end: rangeEndMs } = getDateBoundaries(filterMode, monthSubFilter);
 
     // Subscriptions to sales collections
     const unsubSales = onSnapshot(collection(db, "sales"), (salesSnap) => {
@@ -134,18 +208,12 @@ export default function EmployeeOfTheMonth() {
                 }
               });
 
-              // 2. Process Firestore Sales with Date Range Filter
+              // 2. Process Firestore Sales with Strict Date Range Filter
               salesSnap.docs.forEach((doc) => {
                 const data = doc.data();
                 
-                // Determine sale timestamp
-                let saleMs = data.createdAtMs;
-                if (!saleMs && data.createdAt) {
-                  saleMs = data.createdAt.toMillis ? data.createdAt.toMillis() : new Date(data.createdAt).getTime();
-                }
-
-                // If sale timestamp exists and is outside current range, skip
-                if (saleMs && (saleMs < rangeStartMs || saleMs > rangeEndMs)) {
+                const saleMs = getDocTimestampMs(data);
+                if (!saleMs || saleMs < rangeStartMs || saleMs > rangeEndMs) {
                   return;
                 }
 
@@ -188,15 +256,11 @@ export default function EmployeeOfTheMonth() {
                 }
               });
 
-              // 3. Process Excel Raw Sales with Date Range Filter
+              // 3. Process Excel Raw Sales with Strict Date Range Filter
               excelSnap.docs.forEach((doc) => {
                 const data = doc.data();
-                let excelMs = data.dateMs || data.uploadedAt;
-                if (excelMs && typeof excelMs.toMillis === "function") {
-                  excelMs = excelMs.toMillis();
-                }
-
-                if (excelMs && (excelMs < rangeStartMs || excelMs > rangeEndMs)) {
+                const excelMs = getDocTimestampMs(data);
+                if (!excelMs || excelMs < rangeStartMs || excelMs > rangeEndMs) {
                   return;
                 }
 
@@ -204,13 +268,9 @@ export default function EmployeeOfTheMonth() {
                 const rawPerson = data.salesPerson || data.employeeName || "";
                 if (!rawPerson || !amt) return;
 
-                const firstName = getFirstName(rawPerson);
+                let matchedKey = findMatchingEmpKey(empTotalsMap, rawPerson);
 
-                let matchedKey = Object.keys(empTotalsMap).find(
-                  (key) => key.includes(firstName) || firstName.includes(key.split(" ")[0])
-                );
-
-                if (!matchedKey) {
+                if (!matchedKey || !empTotalsMap[matchedKey]) {
                   matchedKey = normalizeName(rawPerson);
                   empTotalsMap[matchedKey] = {
                     id: matchedKey,
@@ -244,10 +304,20 @@ export default function EmployeeOfTheMonth() {
                 .sort((a, b) => b.totalAmount - a.totalAmount);
 
               setLeaderboard(sortedList);
-              if (sortedList.length > 0 && sortedList[0].totalAmount > 0) {
-                setTopEmployee(sortedList[0]);
-              } else if (sortedList.length > 0) {
-                setTopEmployee(sortedList[0]);
+
+              // ONLY pick top performer if totalAmount > 0!
+              const validWinner = sortedList.find((emp) => emp.totalAmount > 0);
+
+              if (validWinner) {
+                setTopEmployee(validWinner);
+              } else {
+                // If current month has no sales > 0 and subFilter is CURRENT, auto-switch to PREVIOUS month if possible
+                if (filterMode === "MONTH" && monthSubFilter === "CURRENT") {
+                  // Switch to PREVIOUS month automatically to show the reigning winner
+                  setMonthSubFilter("PREVIOUS");
+                } else {
+                  setTopEmployee(null);
+                }
               }
             } catch (err) {
               console.error("EOTM calculation error:", err);
@@ -260,7 +330,7 @@ export default function EmployeeOfTheMonth() {
     });
 
     return () => unsubSales();
-  }, [filterMode]);
+  }, [filterMode, monthSubFilter]);
 
   // Export Leaderboard to Excel for Admin
   const exportEOTMReport = () => {
@@ -390,7 +460,7 @@ export default function EmployeeOfTheMonth() {
               </div>
 
               {/* FILTER RANGE TABS (Monthly / Yearly / Weekly / Daily) */}
-              <div className="flex justify-center items-center gap-1 bg-black/20 backdrop-blur-md p-1 rounded-xl max-w-xs mx-auto mb-4 border border-white/20">
+              <div className="flex justify-center items-center gap-1 bg-black/20 backdrop-blur-md p-1 rounded-xl max-w-sm mx-auto mb-2 border border-white/20">
                 {[
                   { id: "MONTH", label: "Monthly" },
                   { id: "YEAR", label: "Yearly" },
@@ -410,6 +480,34 @@ export default function EmployeeOfTheMonth() {
                   </button>
                 ))}
               </div>
+
+              {/* MONTH SUB-FILTER TABS (Current Month vs Previous Month) */}
+              {filterMode === "MONTH" && (
+                <div className="flex justify-center items-center gap-1 bg-black/30 backdrop-blur-md p-1 rounded-lg max-w-xs mx-auto mb-4 border border-white/20">
+                  <button
+                    onClick={() => setMonthSubFilter("PREVIOUS")}
+                    className={`flex-1 py-0.5 text-[10.5px] font-extrabold rounded-md transition-all ${
+                      monthSubFilter === "PREVIOUS" || isFirst10Days
+                        ? "bg-amber-100 text-amber-950 shadow-xs"
+                        : "text-amber-100 hover:text-white"
+                    }`}
+                  >
+                    {isFirst10Days ? "Reigning Winner • Previous Month (Aug)" : "Previous Month (Aug)"}
+                  </button>
+                  {!isFirst10Days && (
+                    <button
+                      onClick={() => setMonthSubFilter("CURRENT")}
+                      className={`flex-1 py-0.5 text-[10.5px] font-extrabold rounded-md transition-all ${
+                        monthSubFilter === "CURRENT"
+                          ? "bg-amber-100 text-amber-950 shadow-xs"
+                          : "text-amber-100 hover:text-white"
+                      }`}
+                    >
+                      Current Month (Sept)
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Avatar Ring */}
               <div className="relative mx-auto w-20 h-20 mb-2">
@@ -522,70 +620,27 @@ export default function EmployeeOfTheMonth() {
                     </div>
                   </div>
 
-                  {/* Top Performers Leaderboard Table */}
-                  <div>
-                    <div className="flex justify-between items-center mb-2.5">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                        <ChartBarIcon className="w-4 h-4 text-amber-500" />
-                        Leaderboard ({filterMode})
-                      </h4>
-
-                      <button
-                        onClick={exportEOTMReport}
-                        className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
-                      >
-                        <ArrowDownTrayIcon className="w-3.5 h-3.5" />
-                        Export Excel
-                      </button>
-                    </div>
-
-                    <div className="border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs">
-                      <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
-                        {leaderboard.map((emp, index) => (
-                          <div
-                            key={emp.id || index}
-                            className={`flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors ${
-                              index === 0
-                                ? "bg-amber-50/60 font-semibold"
-                                : "hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span
-                                className={`w-5 h-5 rounded-full flex items-center justify-center font-extrabold text-[10px] ${
-                                  index === 0
-                                    ? "bg-amber-400 text-amber-950 shadow-xs"
-                                    : index === 1
-                                    ? "bg-slate-300 text-slate-800"
-                                    : index === 2
-                                    ? "bg-amber-700 text-white"
-                                    : "bg-slate-100 text-slate-600"
-                                }`}
-                              >
-                                {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
-                              </span>
-                              <div>
-                                <p className="font-bold text-slate-800">{emp.name}</p>
-                                <p className="text-[10px] text-slate-500">{emp.department || "Sales Department"}</p>
-                              </div>
-                            </div>
-
-                            <div className="text-right">
-                              <p className="font-extrabold text-emerald-700">
-                                ₹{Number(emp.totalAmount || 0).toLocaleString("en-IN")}
-                              </p>
-                              <p className="text-[10px] text-slate-400">
-                                {emp.dealCount} deal{emp.dealCount > 1 ? "s" : ""}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  {/* Recognition Banner & Footer Controls */}
+                  <div className="bg-gradient-to-br from-amber-50/90 to-yellow-50/60 rounded-2xl p-4 border border-amber-200/80 shadow-xs text-center space-y-2">
+                    <span className="text-2xl">🏆 ⭐</span>
+                    <h3 className="text-sm font-extrabold text-amber-950">
+                      Star Performer Recognition
+                    </h3>
+                    <p className="text-xs text-amber-800 font-medium">
+                      Top sales achievement recorded for <b>{monthTitle}</b>.
+                    </p>
                   </div>
 
                   {/* Admin Footer Controls */}
-                  <div className="border-t pt-3 flex justify-end">
+                  <div className="border-t pt-3 flex justify-between items-center">
+                    <button
+                      onClick={exportEOTMReport}
+                      className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
+                    >
+                      <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                      Export Report
+                    </button>
+
                     <button
                       onClick={() => setShowModal(false)}
                       className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition"
