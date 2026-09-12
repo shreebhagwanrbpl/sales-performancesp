@@ -147,7 +147,9 @@ export default function EotmList() {
                     };
                   }
 
-                  monthlySalesGroup[monthKey].empMap[normName].totalAmount += Number(data.saleAmount ?? data.amount ?? 0);
+                  const gross = Number(data.saleAmount ?? data.amount ?? 0);
+                  const refund = Number(data.refund || 0);
+                  monthlySalesGroup[monthKey].empMap[normName].totalAmount += (gross - refund);
                   monthlySalesGroup[monthKey].empMap[normName].dealCount += 1;
                 });
 

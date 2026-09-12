@@ -105,7 +105,9 @@ export default function Feedback() {
         };
       }
 
-      map[name].saleAmount += Number(d.saleAmount || 0);
+      const gross = Number(d.saleAmount || 0);
+      const refund = Number(d.refund || 0);
+      map[name].saleAmount += (gross - refund);
       map[name].calls += Number(d.calls || 0);
       map[name].feedbackDocs.push(d);
 

@@ -217,7 +217,9 @@ export default function EmployeeOfTheMonth() {
                   return;
                 }
 
-                const amt = Number(data.saleAmount ?? data.amount ?? 0);
+                const gross = Number(data.saleAmount ?? data.amount ?? 0);
+                const refund = Number(data.refund || 0);
+                const amt = gross - refund;
                 const empName = data.employeeName || data.employeeEmail || "";
                 const normName = normalizeName(empName);
 
