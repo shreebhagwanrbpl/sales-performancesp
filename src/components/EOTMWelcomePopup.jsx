@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { useEffect, useState, useRef } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   TrophyIcon,
@@ -17,6 +17,9 @@ export default function EOTMWelcomePopup() {
   const [currentMonthName, setCurrentMonthName] = useState("");
   const [prevMonthName, setPrevMonthName] = useState("");
   const [clapped, setClapped] = useState(false);
+  const dismissedRef = useRef(
+    sessionStorage.getItem("eotm_welcome_popup_dismissed") === "true"
+  );
 
   const normalizeName = (name = "") => {
     return name
@@ -54,7 +57,9 @@ export default function EOTMWelcomePopup() {
   };
 
   useEffect(() => {
-    const hasShown = sessionStorage.getItem("eotm_welcome_popup_shown");
+    if (dismissedRef.current || sessionStorage.getItem("eotm_welcome_popup_dismissed") === "true") {
+      return;
+    }
 
     const now = new Date();
     const currYear = now.getFullYear();
@@ -72,160 +77,168 @@ export default function EOTMWelcomePopup() {
     const currMonthKey = `${currYear}-${String(currMonth + 1).padStart(2, "0")}`;
     const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
 
-    const unsubSales = onSnapshot(collection(db, "sales"), (salesSnap) => {
-      onSnapshot(collection(db, "excel_sales_raw"), (excelSnap) => {
-        onSnapshot(collection(db, "users"), (usersSnap) => {
-          onSnapshot(collection(db, "employees"), (employeesSnap) => {
-            try {
-              const userList = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-              const employeeList = employeesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let isMounted = true;
 
-              const createEmpTotals = () => {
-                const map = {};
-                userList.forEach((u) => {
-                  const normName = normalizeName(u.name || u.email || "");
-                  if (!normName) return;
-                  map[normName] = {
-                    id: u.id,
-                    name: u.name || u.email || "Employee",
-                    email: u.email || "",
-                    department: u.department || "Sales Department",
-                    designation: u.role || "Sales Executive",
-                    photoUrl: u.photoUrl || "",
-                    totalAmount: 0,
-                  };
-                });
-                employeeList.forEach((emp) => {
-                  const normName = normalizeName(emp.name || emp.email || "");
-                  if (normName && map[normName]) {
-                    map[normName].department = emp.department || map[normName].department;
-                    map[normName].designation = emp.designation || map[normName].designation;
-                    if (emp.photoUrl) map[normName].photoUrl = emp.photoUrl;
-                  }
-                });
-                return map;
-              };
+    const fetchEOTM = async () => {
+      try {
+        const [salesSnap, excelSnap, usersSnap, employeesSnap] = await Promise.all([
+          getDocs(collection(db, "sales")),
+          getDocs(collection(db, "excel_sales_raw")),
+          getDocs(collection(db, "users")),
+          getDocs(collection(db, "employees")),
+        ]);
 
-              const currEmpMap = createEmpTotals();
-              const prevEmpMap = createEmpTotals();
+        if (!isMounted) return;
 
-              const getSaleMonthKey = (data) => {
-                let d = null;
-                if (data.createdAtMs && typeof data.createdAtMs === "number") d = new Date(data.createdAtMs);
-                else if (data.dateMs && typeof data.dateMs === "number") d = new Date(data.dateMs);
-                else if (data.createdAt) {
-                  if (typeof data.createdAt.toMillis === "function") d = new Date(data.createdAt.toMillis());
-                  else if (typeof data.createdAt.toDate === "function") d = data.createdAt.toDate();
-                  else d = new Date(data.createdAt);
-                } else if (data.uploadedAt) {
-                  if (typeof data.uploadedAt.toMillis === "function") d = new Date(data.uploadedAt.toMillis());
-                  else if (typeof data.uploadedAt.toDate === "function") d = data.uploadedAt.toDate();
-                  else d = new Date(data.uploadedAt);
-                } else if (data.date || data.billDate || data.invoiceDate) {
-                  d = new Date(data.date || data.billDate || data.invoiceDate);
-                }
+        const userList = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const employeeList = employeesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-                if (!d || isNaN(d.getTime())) return null;
-                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-              };
-
-              // Process Firestore Sales
-              salesSnap.docs.forEach((doc) => {
-                const data = doc.data();
-                const key = getSaleMonthKey(data);
-                if (!key) return;
-
-                const amt = Number(data.saleAmount ?? data.amount ?? 0);
-                const empName = data.employeeName || data.employeeEmail || "";
-                const normName = normalizeName(empName);
-                if (!normName) return;
-
-                if (key === currMonthKey) {
-                  if (!currEmpMap[normName]) {
-                    currEmpMap[normName] = { id: normName, name: empName, email: data.employeeEmail || "", department: "Sales Department", designation: "Sales Executive", totalAmount: 0 };
-                  }
-                  currEmpMap[normName].totalAmount += amt;
-                } else if (key === prevMonthKey) {
-                  if (!prevEmpMap[normName]) {
-                    prevEmpMap[normName] = { id: normName, name: empName, email: data.employeeEmail || "", department: "Sales Department", designation: "Sales Executive", totalAmount: 0 };
-                  }
-                  prevEmpMap[normName].totalAmount += amt;
-                }
-              });
-
-              // Process Excel Sales
-              excelSnap.docs.forEach((doc) => {
-                const data = doc.data();
-                const amt = Number(data.amount || 0);
-                const rawPerson = data.salesPerson || data.employeeName || "";
-                if (!rawPerson || !amt) return;
-
-                const key = getSaleMonthKey(data);
-                if (!key) return;
-
-                const updateMap = (targetMap) => {
-                  let matchedKey = findMatchingEmpKey(targetMap, rawPerson);
-                  if (!matchedKey || !targetMap[matchedKey]) {
-                    matchedKey = normalizeName(rawPerson);
-                    targetMap[matchedKey] = {
-                      id: matchedKey,
-                      name: rawPerson,
-                      email: "",
-                      department: "Sales Department",
-                      designation: "Sales Executive",
-                      totalAmount: 0,
-                    };
-                  }
-                  targetMap[matchedKey].totalAmount += amt;
-                };
-
-                if (key === currMonthKey) {
-                  updateMap(currEmpMap);
-                } else if (key === prevMonthKey) {
-                  updateMap(prevEmpMap);
-                }
-              });
-
-              // Filter for valid winners (totalAmount > 0 ONLY)
-              const sortedCurr = Object.values(currEmpMap)
-                .filter((e) => e.totalAmount > 0)
-                .sort((a, b) => b.totalAmount - a.totalAmount);
-              const sortedPrev = Object.values(prevEmpMap)
-                .filter((e) => e.totalAmount > 0)
-                .sort((a, b) => b.totalAmount - a.totalAmount);
-
-              const currTop = sortedCurr[0] || null;
-              const prevTop = sortedPrev[0] || null;
-
-              setCurrentWinner(currTop);
-              setPrevWinner(prevTop);
-
-              // 10-DAY RULE: First 10 days of the month default to PREVIOUS month winner!
-              const dayOfMonth = now.getDate();
-              if (dayOfMonth <= 10) {
-                setActiveTab("PREVIOUS");
-              } else if (currTop) {
-                setActiveTab("CURRENT");
-              } else {
-                setActiveTab("PREVIOUS");
-              }
-
-              if (!hasShown) {
-                setIsOpen(true);
-                sessionStorage.setItem("eotm_welcome_popup_shown", "true");
-              }
-            } catch (err) {
-              console.error("EOTM Welcome Popup error:", err);
+        const createEmpTotals = () => {
+          const map = {};
+          userList.forEach((u) => {
+            const normName = normalizeName(u.name || u.email || "");
+            if (!normName) return;
+            map[normName] = {
+              id: u.id,
+              name: u.name || u.email || "Employee",
+              email: u.email || "",
+              department: u.department || "Sales Department",
+              designation: u.role || "Sales Executive",
+              photoUrl: u.photoUrl || "",
+              totalAmount: 0,
+            };
+          });
+          employeeList.forEach((emp) => {
+            const normName = normalizeName(emp.name || emp.email || "");
+            if (normName && map[normName]) {
+              map[normName].department = emp.department || map[normName].department;
+              map[normName].designation = emp.designation || map[normName].designation;
+              if (emp.photoUrl) map[normName].photoUrl = emp.photoUrl;
             }
           });
-        });
-      });
-    });
+          return map;
+        };
 
-    return () => unsubSales();
+        const currEmpMap = createEmpTotals();
+        const prevEmpMap = createEmpTotals();
+
+        const getSaleMonthKey = (data) => {
+          let d = null;
+          if (data.createdAtMs && typeof data.createdAtMs === "number") d = new Date(data.createdAtMs);
+          else if (data.dateMs && typeof data.dateMs === "number") d = new Date(data.dateMs);
+          else if (data.createdAt) {
+            if (typeof data.createdAt.toMillis === "function") d = new Date(data.createdAt.toMillis());
+            else if (typeof data.createdAt.toDate === "function") d = data.createdAt.toDate();
+            else d = new Date(data.createdAt);
+          } else if (data.uploadedAt) {
+            if (typeof data.uploadedAt.toMillis === "function") d = new Date(data.uploadedAt.toMillis());
+            else if (typeof data.uploadedAt.toDate === "function") d = data.uploadedAt.toDate();
+            else d = new Date(data.uploadedAt);
+          } else if (data.date || data.billDate || data.invoiceDate) {
+            d = new Date(data.date || data.billDate || data.invoiceDate);
+          }
+
+          if (!d || isNaN(d.getTime())) return null;
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        };
+
+        // Process Firestore Sales
+        salesSnap.docs.forEach((doc) => {
+          const data = doc.data();
+          const key = getSaleMonthKey(data);
+          if (!key) return;
+
+          const amt = Number(data.saleAmount ?? data.amount ?? 0);
+          const empName = data.employeeName || data.employeeEmail || "";
+          const normName = normalizeName(empName);
+          if (!normName) return;
+
+          if (key === currMonthKey) {
+            if (!currEmpMap[normName]) {
+              currEmpMap[normName] = { id: normName, name: empName, email: data.employeeEmail || "", department: "Sales Department", designation: "Sales Executive", totalAmount: 0 };
+            }
+            currEmpMap[normName].totalAmount += amt;
+          } else if (key === prevMonthKey) {
+            if (!prevEmpMap[normName]) {
+              prevEmpMap[normName] = { id: normName, name: empName, email: data.employeeEmail || "", department: "Sales Department", designation: "Sales Executive", totalAmount: 0 };
+            }
+            prevEmpMap[normName].totalAmount += amt;
+          }
+        });
+
+        // Process Excel Sales
+        excelSnap.docs.forEach((doc) => {
+          const data = doc.data();
+          const amt = Number(data.amount || 0);
+          const rawPerson = data.salesPerson || data.employeeName || "";
+          if (!rawPerson || !amt) return;
+
+          const key = getSaleMonthKey(data);
+          if (!key) return;
+
+          const updateMap = (targetMap) => {
+            let matchedKey = findMatchingEmpKey(targetMap, rawPerson);
+            if (!matchedKey || !targetMap[matchedKey]) {
+              matchedKey = normalizeName(rawPerson);
+              targetMap[matchedKey] = {
+                id: matchedKey,
+                name: rawPerson,
+                email: "",
+                department: "Sales Department",
+                designation: "Sales Executive",
+                totalAmount: 0,
+              };
+            }
+            targetMap[matchedKey].totalAmount += amt;
+          };
+
+          if (key === currMonthKey) {
+            updateMap(currEmpMap);
+          } else if (key === prevMonthKey) {
+            updateMap(prevEmpMap);
+          }
+        });
+
+        const sortedCurr = Object.values(currEmpMap)
+          .filter((e) => e.totalAmount > 0)
+          .sort((a, b) => b.totalAmount - a.totalAmount);
+        const sortedPrev = Object.values(prevEmpMap)
+          .filter((e) => e.totalAmount > 0)
+          .sort((a, b) => b.totalAmount - a.totalAmount);
+
+        const currTop = sortedCurr[0] || null;
+        const prevTop = sortedPrev[0] || null;
+
+        setCurrentWinner(currTop);
+        setPrevWinner(prevTop);
+
+        const dayOfMonth = now.getDate();
+        if (dayOfMonth <= 10) {
+          setActiveTab("PREVIOUS");
+        } else if (currTop) {
+          setActiveTab("CURRENT");
+        } else {
+          setActiveTab("PREVIOUS");
+        }
+
+        if (!dismissedRef.current && sessionStorage.getItem("eotm_welcome_popup_dismissed") !== "true") {
+          setIsOpen(true);
+        }
+      } catch (err) {
+        console.error("EOTM Welcome Popup error:", err);
+      }
+    };
+
+    fetchEOTM();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleClose = () => {
+    dismissedRef.current = true;
+    sessionStorage.setItem("eotm_welcome_popup_dismissed", "true");
     setIsOpen(false);
   };
 
@@ -372,9 +385,11 @@ export default function EOTMWelcomePopup() {
             <button
               onClick={() => {
                 setClapped(true);
+                dismissedRef.current = true;
+                sessionStorage.setItem("eotm_welcome_popup_dismissed", "true");
                 setTimeout(() => setIsOpen(false), 1200);
               }}
-              className={`w-full py-3 rounded-2xl font-extrabold text-sm shadow-md transition-all duration-300 ${
+              className={`w-full py-3 rounded-2xl font-extrabold text-sm shadow-md transition-all duration-300 cursor-pointer ${
                 clapped
                   ? "bg-emerald-600 text-white shadow-emerald-200 scale-95"
                   : "bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 text-white hover:brightness-105"

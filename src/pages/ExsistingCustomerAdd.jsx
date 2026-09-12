@@ -1102,7 +1102,7 @@ Employee ke paas already ${totalExisting} customers hain.`,
 
     try {
       setAssigning(true);
-      const assignee =
+      let assignee =
         employees.find((e) => e.id === assignEmployeeId) ||
         tls.find((t) => t.id === assignEmployeeId);
       if (!assignee && assignEmployeeId === uid) {

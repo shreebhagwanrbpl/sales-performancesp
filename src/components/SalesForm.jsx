@@ -8,7 +8,9 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   collection,
+  collectionGroup,
   addDoc,
+  setDoc,
   serverTimestamp,
   onSnapshot,
   query,
@@ -19,6 +21,7 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import * as XLSX from "xlsx";
@@ -79,6 +82,9 @@ export default function SalesForm() {
   const [entryEmployeeName, setEntryEmployeeName] = useState("");
   const [monthlyTarget, setMonthlyTarget] = useState(0);
   const [editId, setEditId] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState("");
   const [inventory, setInventory] = useState([]);
   const [openProductIndex, setOpenProductIndex] = useState(null);
   const auth = getAuth();
@@ -445,10 +451,14 @@ export default function SalesForm() {
       finalEmployeeName = snap.exists() ? snap.data().name : "";
     } else {
       finalEmployeeId = entryEmployeeId;
-      const snap = await getDoc(doc(db, "users", entryEmployeeId));
-      finalEmployeeName = snap.exists() ? snap.data().name : "";
+      if (entryEmployeeId) {
+        const snap = await getDoc(doc(db, "users", entryEmployeeId));
+        finalEmployeeName = snap.exists() ? snap.data().name : (entryEmployeeName || "");
+      } else if (editId) {
+        finalEmployeeName = entryEmployeeName || "Employee";
+      }
     }
-    if (!finalEmployeeName) {
+    if (!editId && !finalEmployeeName) {
       alert("Employee name missing");
       return;
     }
@@ -468,16 +478,22 @@ export default function SalesForm() {
     setLoading(true);
     try {
       const now = new Date();
+      const empDocKey = (finalEmployeeName || "UNKNOWN_EMPLOYEE").trim();
+      const entryDateStr = form.ptDate || now.toISOString().split("T")[0];
+      const targetMonthKey = entryDateStr.substring(0, 7);
 
       if (editId) {
-        // 🔁 EDIT MODE
-        await updateDoc(doc(db, "sales", editId), {
+        // 🔁 EDIT MODE (FOR EMPLOYEE & ADMIN)
+        const updatePayload = {
           ptDate: form.ptDate
             ? Timestamp.fromDate(new Date(form.ptDate))
             : null,
+          date: entryDateStr,
+          month: targetMonthKey,
 
           piCount: cleanPIs.length,
           pis: cleanPIs,
+          remark: form.remark || "",
 
           sales: form.sales.map((s) => ({
             piNo: s.piNo || "",
@@ -487,6 +503,7 @@ export default function SalesForm() {
               name: x.name || "",
               qty: Number(x.qty || 0),
             })),
+            qty: Number(s.qty || 0),
             piConfirmDate: s.piConfirmDate
               ? Timestamp.fromDate(new Date(s.piConfirmDate))
               : null,
@@ -496,55 +513,135 @@ export default function SalesForm() {
           saleAmount: todaySaleTotal,
           refund: parseNumber(form.refund),
           updatedAt: serverTimestamp(),
-        });
+        };
+
+        // Update in new hierarchical format
+        try {
+          await setDoc(
+            doc(db, "sales", empDocKey, "months", selectedMonth, "entries", editId),
+            updatePayload,
+            { merge: true }
+          );
+        } catch (_) {}
+
+        // Also update in root sales for fallback
+        try {
+          await updateDoc(doc(db, "sales", editId), updatePayload);
+        } catch (_) {}
 
         setEditId(null);
+        setEditItem(null);
       } else {
-        await addDoc(collection(db, "sales"), {
-          employeeId: finalEmployeeId,
-          employeeName: finalEmployeeName,
-          ptDate: form.ptDate
-            ? Timestamp.fromDate(new Date(form.ptDate))
-            : null,
-
-          piCount: cleanPIs.length,
-          pis: cleanPIs,
-          remark: form.remark,
-          sales: form.sales.map((s) => ({
-            piNo: s.piNo || "",
-            amount: parseNumber(s.amount),
-            currency: s.currency || "INR",
-
-            products: (s.products || []).map((x) => ({
-              name: x.name || "",
-              qty: Number(x.qty || 0),
-            })),
-
-            qty: Number(s.qty || 0),
-
-            piConfirmDate: s.piConfirmDate
-              ? Timestamp.fromDate(new Date(s.piConfirmDate))
-              : null,
-          })),
-
-          calls: parseNumber(form.calls),
-          saleAmount: todaySaleTotal,
-          refund: parseNumber(form.refund),
-          createdAt: serverTimestamp(),
-          createdAtMs: now.getTime(),
-          month: selectedMonth,
-        });
-
-        if (editId) {
-          await updateDoc(doc(db, "sales", editId), {
-            // ... existing fields
-            remark: form.remark, // 🔥 ADD YE
+        // 1. Ensure employee parent doc exists (named after Employee)
+        await setDoc(
+          doc(db, "sales", empDocKey),
+          {
+            employeeName: finalEmployeeName,
+            employeeId: finalEmployeeId,
             updatedAt: serverTimestamp(),
-          });
+          },
+          { merge: true }
+        );
+
+        // 2. Ensure month parent doc exists
+        await setDoc(
+          doc(db, "sales", empDocKey, "months", targetMonthKey),
+          {
+            month: targetMonthKey,
+            employeeName: finalEmployeeName,
+            employeeId: finalEmployeeId,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // 3. Save / Merge into Date Document (e.g., "2026-09-02")
+        const dateDocRef = doc(
+          db,
+          "sales",
+          empDocKey,
+          "months",
+          targetMonthKey,
+          "entries",
+          entryDateStr
+        );
+        const existingSnap = await getDoc(dateDocRef);
+
+        const newSales = form.sales.map((s) => ({
+          piNo: s.piNo || "",
+          amount: parseNumber(s.amount),
+          currency: s.currency || "INR",
+          products: (s.products || []).map((x) => ({
+            name: x.name || "",
+            qty: Number(x.qty || 0),
+          })),
+          qty: Number(s.qty || 0),
+          piConfirmDate: s.piConfirmDate
+            ? Timestamp.fromDate(new Date(s.piConfirmDate))
+            : null,
+        }));
+
+        if (existingSnap.exists()) {
+          const ex = existingSnap.data();
+          const mergedPIs = [...(ex.pis || []), ...cleanPIs];
+          const mergedSales = [...(ex.sales || []), ...newSales];
+          const mergedCalls = Number(ex.calls || 0) + parseNumber(form.calls);
+          const mergedSaleAmount = Number(ex.saleAmount || 0) + Number(todaySaleTotal || 0);
+          const mergedRefund = Number(ex.refund || 0) + parseNumber(form.refund);
+          const mergedRemark = ex.remark
+            ? (form.remark ? `${ex.remark} | ${form.remark}` : ex.remark)
+            : (form.remark || "");
+
+          await setDoc(
+            dateDocRef,
+            {
+              employeeId: finalEmployeeId,
+              employeeName: finalEmployeeName,
+              month: targetMonthKey,
+              date: entryDateStr,
+              ptDate: form.ptDate
+                ? Timestamp.fromDate(new Date(form.ptDate))
+                : (ex.ptDate || Timestamp.fromDate(now)),
+              piCount: mergedPIs.length,
+              pis: mergedPIs,
+              sales: mergedSales,
+              calls: mergedCalls,
+              saleAmount: mergedSaleAmount,
+              refund: mergedRefund,
+              remark: mergedRemark,
+              updatedAt: serverTimestamp(),
+              createdAtMs: ex.createdAtMs || now.getTime(),
+            },
+            { merge: true }
+          );
+        } else {
+          await setDoc(
+            dateDocRef,
+            {
+              employeeId: finalEmployeeId,
+              employeeName: finalEmployeeName,
+              month: targetMonthKey,
+              date: entryDateStr,
+              ptDate: form.ptDate
+                ? Timestamp.fromDate(new Date(form.ptDate))
+                : Timestamp.fromDate(now),
+              piCount: cleanPIs.length,
+              pis: cleanPIs,
+              remark: form.remark || "",
+              sales: newSales,
+              calls: parseNumber(form.calls),
+              saleAmount: todaySaleTotal,
+              refund: parseNumber(form.refund),
+              createdAt: serverTimestamp(),
+              createdAtMs: now.getTime(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
         }
       }
 
-      // ✅ reset (same as before)
+      // ✅ reset
       setForm({
         ptDate: "",
         piConfirmDate: "",
@@ -555,6 +652,7 @@ export default function SalesForm() {
         refund: "",
         sales: [],
         pis: [],
+        remark: "",
       });
       setEntryEmployeeId("");
       setEntryEmployeeName("");
@@ -566,42 +664,279 @@ export default function SalesForm() {
     }
   };
 
-  /* ================= FETCH SALES (THIS MONTH) ================= */
+  /* ================= DELETE HANDLER (ADMIN ONLY) ================= */
+  const handleDelete = async (entryId, empName, entryMonth) => {
+    if (role !== "ADMIN") return;
+    const isConfirmed = window.confirm(
+      `Are you sure you want to permanently delete this sales entry${
+        empName ? ` for ${empName}` : ""
+      }?`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      const targetEmpDoc = (empName || "").trim();
+      const targetMonth = entryMonth || selectedMonth;
+      if (targetEmpDoc) {
+        try {
+          await deleteDoc(
+            doc(db, "sales", targetEmpDoc, "months", targetMonth, "entries", entryId)
+          );
+        } catch (_) {}
+      }
+      try {
+        await deleteDoc(doc(db, "sales", entryId));
+      } catch (_) {}
+
+      alert("Sales entry deleted successfully ✅");
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Failed to delete entry: " + err.message);
+    }
+  };
+
+  /* ================= OLD DATA MIGRATION HELPER (DATE-WISE GROUPING) ================= */
+  const handleMigrateOldSales = async () => {
+    if (
+      !window.confirm(
+        "Kripya confirm karein: Saara purana data bina delete huye naye DATE-WISE format (sales -> Employee Name -> months -> YYYY-MM -> entries -> YYYY-MM-DD) me safely combine hokar save ho jayega."
+      )
+    )
+      return;
+
+    setMigrating(true);
+    setMigrationStatus("Scanning existing sales records for date-wise grouping...");
+    try {
+      const snap = await getDocs(collection(db, "sales"));
+      const dateMap = new Map(); // key: `${empName}___${monthKey}___${dateKey}`
+      const nonDateSubDocs = []; // to clean up temporary random-id subdocs if any
+
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (
+          data.saleAmount !== undefined ||
+          data.pis ||
+          data.calls !== undefined ||
+          data.ptDate
+        ) {
+          const empName = (data.employeeName || "UNKNOWN_EMPLOYEE").trim();
+          const empId = data.employeeId || "";
+
+          let dateKey = "";
+          if (data.ptDate?.toDate) {
+            const dt = data.ptDate.toDate();
+            dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+          } else if (data.createdAt?.toDate) {
+            const dt = data.createdAt.toDate();
+            dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+          } else if (data.createdAtMs) {
+            const dt = new Date(data.createdAtMs);
+            dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+          } else if (data.month) {
+            dateKey = `${data.month}-01`;
+          } else {
+            dateKey = `${selectedMonth}-01`;
+          }
+
+          const monthKey = dateKey.substring(0, 7);
+          const groupKey = `${empName}___${monthKey}___${dateKey}`;
+
+          if (!dateMap.has(groupKey)) {
+            dateMap.set(groupKey, {
+              empName,
+              empId,
+              monthKey,
+              dateKey,
+              ptDate: data.ptDate || (data.createdAt ? data.createdAt : null),
+              calls: 0,
+              refund: 0,
+              saleAmount: 0,
+              pis: [],
+              sales: [],
+              remarks: [],
+              createdAtMs: data.createdAtMs || (data.createdAt?.toDate ? data.createdAt.toDate().getTime() : Date.now()),
+            });
+          }
+
+          const group = dateMap.get(groupKey);
+          group.calls += parseNumber(data.calls);
+          group.refund += parseNumber(data.refund);
+          group.saleAmount += Number(data.saleAmount || 0);
+
+          if (Array.isArray(data.pis)) {
+            group.pis.push(...data.pis);
+          }
+          if (Array.isArray(data.sales)) {
+            group.sales.push(...data.sales);
+          }
+          if (data.remark && !group.remarks.includes(data.remark)) {
+            group.remarks.push(data.remark);
+          }
+        }
+      }
+
+      // Check existing collectionGroup entries to clean up non-date IDs like random hash docs
+      try {
+        const subSnap = await getDocs(collectionGroup(db, "entries"));
+        for (const subDoc of subSnap.docs) {
+          // If doc id is NOT a date format (YYYY-MM-DD)
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(subDoc.id)) {
+            nonDateSubDocs.push(subDoc.ref);
+          }
+        }
+      } catch (_) {}
+
+      let count = 0;
+      const total = dateMap.size;
+
+      for (const item of dateMap.values()) {
+        // 1. Employee doc
+        await setDoc(
+          doc(db, "sales", item.empName),
+          {
+            employeeName: item.empName,
+            employeeId: item.empId,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // 2. Month doc
+        await setDoc(
+          doc(db, "sales", item.empName, "months", item.monthKey),
+          {
+            month: item.monthKey,
+            employeeName: item.empName,
+            employeeId: item.empId,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // 3. Date document (ID = "YYYY-MM-DD", e.g. "2026-09-02")
+        await setDoc(
+          doc(db, "sales", item.empName, "months", item.monthKey, "entries", item.dateKey),
+          {
+            employeeId: item.empId,
+            employeeName: item.empName,
+            month: item.monthKey,
+            date: item.dateKey,
+            ptDate: item.ptDate,
+            calls: item.calls,
+            piCount: item.pis.length,
+            pis: item.pis,
+            sales: item.sales,
+            saleAmount: item.saleAmount,
+            refund: item.refund,
+            remark: item.remarks.join(" | "),
+            createdAtMs: item.createdAtMs,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        count++;
+        setMigrationStatus(`Saving Date ${count} of ${total} (${item.empName} - ${item.dateKey})...`);
+      }
+
+      // Clean up previous random-hash subcollection documents so entries only has clean dates
+      for (const ref of nonDateSubDocs) {
+        try {
+          await deleteDoc(ref);
+        } catch (_) {}
+      }
+
+      alert(
+        `Date-Wise Migration Successful! 🎉\n${total} unique dates me saara data combine hokar date-wise (jaise 2026-09-02) save ho gaya hai.`
+      );
+      setMigrationStatus(`Complete! ${total} date-wise records organized.`);
+    } catch (err) {
+      console.error("Migration error:", err);
+      alert("Migration failed: " + err.message);
+      setMigrationStatus("Failed: " + err.message);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  /* ================= FETCH SALES (DUAL-READER: ROOT + SUBCOLLECTIONS) ================= */
   useEffect(() => {
     if (!employeeId || !role) return;
 
     const { start, end } = getMonthRange(selectedMonth);
 
-    let q;
+    let rootDocs = [];
+    let subDocs = [];
 
-    if (role === "EMPLOYEE") {
-      q = query(
-        collection(db, "sales"),
-        where("employeeId", "==", employeeId),
-        where("createdAtMs", ">=", start),
-        where("createdAtMs", "<", end),
-        orderBy("createdAtMs", "desc"),
-      );
-    } else {
-      q = query(
-        collection(db, "sales"),
-        where("createdAtMs", ">=", start),
-        where("createdAtMs", "<", end),
-        orderBy("createdAtMs", "desc"),
-      );
-    }
+    const updateCombinedEntries = () => {
+      const map = new Map();
 
-    const unsub = onSnapshot(q, (snap) => {
-      setEntries(
-        snap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })),
-      );
+      // Flat root entries
+      rootDocs.forEach((item) => {
+        map.set(item.id, item);
+      });
+
+      // Hierarchical subcollection entries
+      subDocs.forEach((item) => {
+        map.set(item.id, item);
+      });
+
+      let list = Array.from(map.values());
+
+      if (role === "EMPLOYEE") {
+        list = list.filter(
+          (e) =>
+            e.employeeId === employeeId ||
+            (employeeName && e.employeeName?.trim() === employeeName.trim())
+        );
+      } else if (selectedEmployee && selectedEmployee !== "ALL") {
+        list = list.filter(
+          (e) =>
+            e.employeeName === selectedEmployee ||
+            e.employeeId === selectedEmployee
+        );
+      }
+
+      list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+      setEntries(list);
+    };
+
+    // 1. Root collection listener
+    const qRoot = query(
+      collection(db, "sales"),
+      where("createdAtMs", ">=", start),
+      where("createdAtMs", "<", end)
+    );
+
+    const unsubRoot = onSnapshot(qRoot, (snap) => {
+      rootDocs = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter(
+          (d) =>
+            d.saleAmount !== undefined ||
+            d.pis ||
+            d.calls !== undefined ||
+            d.ptDate
+        );
+      updateCombinedEntries();
     });
 
-    return () => unsub();
-  }, [employeeId, role, selectedMonth]);
+    // 2. Subcollections entries listener
+    const qSub = query(
+      collectionGroup(db, "entries"),
+      where("month", "==", selectedMonth)
+    );
+
+    const unsubSub = onSnapshot(qSub, (snap) => {
+      subDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      updateCombinedEntries();
+    });
+
+    return () => {
+      unsubRoot();
+      unsubSub();
+    };
+  }, [employeeId, employeeName, role, selectedMonth, selectedEmployee]);
 
   // pi counter change
 
@@ -1445,6 +1780,31 @@ export default function SalesForm() {
             </div>
 
             <div className="mt-8 flex justify-end gap-3">
+              {editId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditId(null);
+                    setForm({
+                      ptDate: "",
+                      piConfirmDate: "",
+                      piCount: "",
+                      saleCount: "",
+                      currency: "INR",
+                      calls: "",
+                      sales: [],
+                      pis: [],
+                      remark: "",
+                    });
+                    setEntryEmployeeId("");
+                    setEntryEmployeeName("");
+                  }}
+                  className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold border rounded-lg transition-colors"
+                >
+                  Cancel Edit
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() =>
@@ -1457,6 +1817,7 @@ export default function SalesForm() {
                     calls: "",
                     sales: [],
                     pis: [],
+                    remark: "",
                   })
                 }
                 className="px-5 py-2 border rounded-lg"
@@ -1468,9 +1829,9 @@ export default function SalesForm() {
                 type="button"
                 onClick={handleSave}
                 disabled={loading}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg"
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transition-colors"
               >
-                {loading ? "Saving..." : "Save Entry"}
+                {loading ? (editId ? "Updating..." : "Saving...") : (editId ? "Update Entry" : "Save Entry")}
               </button>
             </div>
           </div>
@@ -1913,6 +2274,31 @@ export default function SalesForm() {
 
               {/* ================= ACTION BUTTONS ================= */}
               <div className="flex justify-end gap-3">
+                {editId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditId(null);
+                      setForm({
+                        ptDate: "",
+                        piConfirmDate: "",
+                        piCount: "",
+                        saleCount: "",
+                        currency: "INR",
+                        calls: "",
+                        sales: [],
+                        pis: [],
+                        remark: "",
+                      });
+                      setEntryEmployeeId("");
+                      setEntryEmployeeName("");
+                    }}
+                    className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold border rounded-lg transition-colors"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() =>
@@ -1937,9 +2323,9 @@ export default function SalesForm() {
                   type="button"
                   onClick={handleSave}
                   disabled={loading}
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg"
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transition-colors"
                 >
-                  {loading ? "Saving..." : "Save Entry"}
+                  {loading ? (editId ? "Updating..." : "Saving...") : (editId ? "Update Entry" : "Save Entry")}
                 </button>
               </div>
             </div>
@@ -2000,8 +2386,32 @@ export default function SalesForm() {
                 Monthly Report
               </button>
             )}
+
+            {role === "ADMIN" && (
+              <button
+                onClick={handleMigrateOldSales}
+                disabled={migrating}
+                className="h-9 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold text-xs shadow-2xs transition-all flex items-center gap-1.5"
+                title="Purane sales data ko bina delete kiye naye format (sales/Employee Name/months/entries) me safely copy karein"
+              >
+                {migrating ? "Copying..." : "🔄 Copy Old Data to New Format"}
+              </button>
+            )}
           </div>
         </div>
+
+        {/* MIGRATION STATUS BANNER (ADMIN ONLY) */}
+        {role === "ADMIN" && migrationStatus && (
+          <div className="w-full text-xs font-semibold text-purple-700 bg-purple-50 p-2.5 rounded-xl border border-purple-200 flex items-center justify-between">
+            <span>ℹ️ {migrationStatus}</span>
+            <button
+              onClick={() => setMigrationStatus("")}
+              className="text-purple-500 hover:text-purple-800 text-xs font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* PROMINENT SEARCH BAR (FOR ALL ROLES) */}
         <div className="relative w-full">
@@ -2061,67 +2471,87 @@ export default function SalesForm() {
                             Entry #{index + 1}
                           </span>
 
-                          {role === "EMPLOYEE" &&
-                            e.employeeId === employeeId && (
-                              <button
-                                onClick={() => {
-                                  setEditId(e.id);
+                          {/* EDIT BUTTON (FOR ADMIN OR THE EMPLOYEE WHO CREATED IT) */}
+                          {(role === "ADMIN" ||
+                            (role === "EMPLOYEE" && (e.employeeId === employeeId || (employeeName && e.employeeName?.trim() === employeeName.trim())))) && (
+                            <button
+                              onClick={() => {
+                                setEditId(e.id);
+                                setEditItem(e);
+                                if (role !== "EMPLOYEE") {
+                                  setOpenForm(true);
+                                  setEntryEmployeeId(e.employeeId || "");
+                                  setEntryEmployeeName(e.employeeName || "");
+                                }
 
-                                  setForm({
-                                    ptDate: e.ptDate
-                                      ? e.ptDate
-                                          .toDate()
+                                setForm({
+                                  ptDate: e.ptDate
+                                    ? (typeof e.ptDate.toDate === "function" ? e.ptDate.toDate() : new Date(e.ptDate))
+                                        .toISOString()
+                                        .split("T")[0]
+                                    : "",
+                                  piCount: e.piCount || e.pis?.length || "",
+                                  saleCount: e.sales?.length || "",
+                                  calls: e.calls || "",
+                                  remark: e.remark || "",
+                                  pis: e.pis || [],
+                                  sales: (e.sales || []).map((s) => ({
+                                    ...s,
+                                    products: Array.isArray(s.products)
+                                      ? s.products
+                                      : typeof s.products === "string"
+                                        ? s.products
+                                            .split(",")
+                                            .map((item) => {
+                                              const match =
+                                                item.match(/(.+)\((\d+)\)/);
+                                              return match
+                                                ? {
+                                                    name: match[1].trim(),
+                                                    qty: Number(match[2]),
+                                                  }
+                                                : {
+                                                    name: item.trim(),
+                                                    qty: 0,
+                                                  };
+                                            })
+                                        : [],
+
+                                    piConfirmDate: s.piConfirmDate
+                                      ? (typeof s.piConfirmDate.toDate === "function" ? s.piConfirmDate.toDate() : new Date(s.piConfirmDate))
                                           .toISOString()
                                           .split("T")[0]
                                       : "",
-                                    piCount: e.piCount || e.pis?.length || "",
-                                    saleCount: e.sales?.length || "",
-                                    calls: e.calls || "",
-                                    remark: e.remark || "",
-                                    pis: e.pis || [],
-                                    sales: (e.sales || []).map((s) => ({
-                                      ...s,
-                                      products: Array.isArray(s.products)
-                                        ? s.products
-                                        : typeof s.products === "string"
-                                          ? s.products
-                                              .split(",")
-                                              .map((item) => {
-                                                const match =
-                                                  item.match(/(.+)\((\d+)\)/);
-                                                return match
-                                                  ? {
-                                                      name: match[1].trim(),
-                                                      qty: Number(match[2]),
-                                                    }
-                                                  : {
-                                                      name: item.trim(),
-                                                      qty: 0,
-                                                    };
-                                              })
-                                          : [],
+                                  })),
+                                });
 
-                                      piConfirmDate: s.piConfirmDate
-                                        ? s.piConfirmDate
-                                            .toDate()
-                                            .toISOString()
-                                            .split("T")[0]
-                                        : "",
-                                    })),
+                                setTimeout(() => {
+                                  formRef.current?.scrollIntoView({
+                                    behavior: "smooth",
                                   });
+                                }, 100);
+                              }}
+                              className="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium shadow-2xs transition-colors"
+                            >
+                              Edit
+                            </button>
+                          )}
 
-                                  // 🔥 YE LINE ADD KARO
-                                  setTimeout(() => {
-                                    formRef.current?.scrollIntoView({
-                                      behavior: "smooth",
-                                    });
-                                  }, 100);
-                                }}
-                                className="text-xs px-3 py-1 bg-yellow-500 text-white rounded"
-                              >
-                                Edit
-                              </button>
-                            )}
+                          {/* DELETE BUTTON (ADMIN ONLY) */}
+                          {role === "ADMIN" && (
+                            <button
+                              onClick={() =>
+                                handleDelete(
+                                  e.id,
+                                  e.employeeName,
+                                  e.month || selectedMonth
+                                )
+                              }
+                              className="text-xs px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-medium shadow-2xs transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </div>
 
