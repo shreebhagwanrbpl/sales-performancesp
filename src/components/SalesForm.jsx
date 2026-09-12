@@ -276,12 +276,15 @@ export default function SalesForm() {
       if (time >= start && time < end) {
         monthPI += Number(e.piCount || 0);
         monthCalls += parseNumber(e.calls);
-        monthSale += parseNumber(e.saleAmount);
+        const grossSale = parseNumber(e.saleAmount);
+        const refundAmt = parseNumber(e.refund);
+        const netSale = grossSale - refundAmt;
+        monthSale += netSale;
 
         if (d.toDateString() === todayStr) {
           todayPI += Number(e.piCount || 0);
           todayCalls += parseNumber(e.calls);
-          todaySale += parseNumber(e.saleAmount);
+          todaySale += netSale;
         }
       }
     });
@@ -355,7 +358,9 @@ export default function SalesForm() {
         totalTarget += Array.isArray(e.pis)
           ? e.pis.reduce((sum, p) => sum + Number(p.amount || 0), 0)
           : 0;
-        totalAchieved += Number(e.saleAmount || 0);
+        const grossSale = Number(e.saleAmount || 0);
+        const refundAmt = Number(e.refund || 0);
+        totalAchieved += (grossSale - refundAmt);
       }
     });
 
@@ -522,12 +527,12 @@ export default function SalesForm() {
             updatePayload,
             { merge: true }
           );
-        } catch (_) {}
+        } catch (_) { }
 
         // Also update in root sales for fallback
         try {
           await updateDoc(doc(db, "sales", editId), updatePayload);
-        } catch (_) {}
+        } catch (_) { }
 
         setEditId(null);
         setEditItem(null);
@@ -668,8 +673,7 @@ export default function SalesForm() {
   const handleDelete = async (entryId, empName, entryMonth) => {
     if (role !== "ADMIN") return;
     const isConfirmed = window.confirm(
-      `Are you sure you want to permanently delete this sales entry${
-        empName ? ` for ${empName}` : ""
+      `Are you sure you want to permanently delete this sales entry${empName ? ` for ${empName}` : ""
       }?`
     );
     if (!isConfirmed) return;
@@ -682,11 +686,11 @@ export default function SalesForm() {
           await deleteDoc(
             doc(db, "sales", targetEmpDoc, "months", targetMonth, "entries", entryId)
           );
-        } catch (_) {}
+        } catch (_) { }
       }
       try {
         await deleteDoc(doc(db, "sales", entryId));
-      } catch (_) {}
+      } catch (_) { }
 
       alert("Sales entry deleted successfully ✅");
     } catch (err) {
@@ -784,7 +788,7 @@ export default function SalesForm() {
             nonDateSubDocs.push(subDoc.ref);
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       let count = 0;
       const total = dateMap.size;
@@ -843,7 +847,7 @@ export default function SalesForm() {
       for (const ref of nonDateSubDocs) {
         try {
           await deleteDoc(ref);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       alert(
@@ -1104,8 +1108,13 @@ export default function SalesForm() {
       wsData.push([]);
 
       /* ================= DAILY ACTIVITY ================= */
-      wsData.push(["Today Calls Made", "Total Sale Today"]);
-      wsData.push([e.calls || 0, Number(e.saleAmount || 0)]);
+      wsData.push(["Today Calls Made", "Total Sale Today", "Refund Amount", "Net Sale Today"]);
+      wsData.push([
+        e.calls || 0,
+        Number(e.saleAmount || 0),
+        Number(e.refund || 0),
+        Number(e.saleAmount || 0) - Number(e.refund || 0),
+      ]);
 
       /* ================= SEPARATOR ================= */
       if (index !== entries.length - 1) {
@@ -1139,8 +1148,7 @@ export default function SalesForm() {
     }
     const summaryBlock = [
       `Month,${selectedMonth}`,
-      `Employee,${
-        selectedEmployee === "ALL" ? "All Employees" : selectedEmployee
+      `Employee,${selectedEmployee === "ALL" ? "All Employees" : selectedEmployee
       }`,
       ``,
 
@@ -1163,7 +1171,15 @@ export default function SalesForm() {
       ``,
     ];
 
-    const headers = ["Employee", "PI Date", "PI Count", "Calls", "Sale Amount"];
+    const headers = [
+      "Employee",
+      "PI Date",
+      "PI Count",
+      "Calls",
+      "Gross Sale",
+      "Refund Amount",
+      "Net Sale Amount",
+    ];
 
     const rows = filteredEntries.map((e) => [
       e.employeeName,
@@ -1171,6 +1187,8 @@ export default function SalesForm() {
       e.piCount || e.pis?.length || 0,
       e.calls || 0,
       e.saleAmount || 0,
+      e.refund || 0,
+      (e.saleAmount || 0) - (e.refund || 0),
     ]);
 
     const csv =
@@ -1331,9 +1349,8 @@ export default function SalesForm() {
             /> */}
             <SummaryCard
               title="Monthly Sale"
-              value={`₹${summary.monthSale.toLocaleString("en-IN")} / ₹${
-                monthlyTarget > 0 ? monthlyTarget.toLocaleString("en-IN") : "--"
-              }`}
+              value={`₹${summary.monthSale.toLocaleString("en-IN")} / ₹${monthlyTarget > 0 ? monthlyTarget.toLocaleString("en-IN") : "--"
+                }`}
               sub={`Today: ₹${summary.todaySale.toLocaleString(
                 "en-IN",
               )} • ${progress}% achieved`}
@@ -1494,36 +1511,36 @@ export default function SalesForm() {
                             />
                             {openProductIndex ===
                               `pi-emp-${index}-${pIndex}` && (
-                              <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
-                                {inventory
-                                  .filter((p) =>
-                                    p.name
-                                      .toLowerCase()
-                                      .includes(
-                                        (prod.name || "").toLowerCase(),
-                                      ),
-                                  )
-                                  .slice(0, 10)
-                                  .map((p) => (
-                                    <div
-                                      key={p.id}
-                                      className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
-                                      onMouseDown={() => {
-                                        const updated = [...form.pis];
-                                        updated[index].products[pIndex].name =
-                                          p.name;
-                                        setForm({
-                                          ...form,
-                                          pis: updated,
-                                        });
-                                        setOpenProductIndex(null);
-                                      }}
-                                    >
-                                      {p.name}
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
+                                <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
+                                  {inventory
+                                    .filter((p) =>
+                                      p.name
+                                        .toLowerCase()
+                                        .includes(
+                                          (prod.name || "").toLowerCase(),
+                                        ),
+                                    )
+                                    .slice(0, 10)
+                                    .map((p) => (
+                                      <div
+                                        key={p.id}
+                                        className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
+                                        onMouseDown={() => {
+                                          const updated = [...form.pis];
+                                          updated[index].products[pIndex].name =
+                                            p.name;
+                                          setForm({
+                                            ...form,
+                                            pis: updated,
+                                          });
+                                          setOpenProductIndex(null);
+                                        }}
+                                      >
+                                        {p.name}
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
                             <input
                               className="input"
                               placeholder="Qty"
@@ -1687,31 +1704,31 @@ export default function SalesForm() {
                           />
                           {openProductIndex ===
                             `sale-emp-${index}-${pIndex}` && (
-                            <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
-                              {inventory
-                                .filter((p) =>
-                                  p.name
-                                    .toLowerCase()
-                                    .includes((prod.name || "").toLowerCase()),
-                                )
-                                .slice(0, 10)
-                                .map((p) => (
-                                  <div
-                                    key={p.id}
-                                    className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
-                                    onMouseDown={() => {
-                                      const updated = [...form.sales];
-                                      updated[index].products[pIndex].name =
-                                        p.name;
-                                      setForm({ ...form, sales: updated });
-                                      setOpenProductIndex(null);
-                                    }}
-                                  >
-                                    {p.name}
-                                  </div>
-                                ))}
-                            </div>
-                          )}
+                              <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
+                                {inventory
+                                  .filter((p) =>
+                                    p.name
+                                      .toLowerCase()
+                                      .includes((prod.name || "").toLowerCase()),
+                                  )
+                                  .slice(0, 10)
+                                  .map((p) => (
+                                    <div
+                                      key={p.id}
+                                      className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
+                                      onMouseDown={() => {
+                                        const updated = [...form.sales];
+                                        updated[index].products[pIndex].name =
+                                          p.name;
+                                        setForm({ ...form, sales: updated });
+                                        setOpenProductIndex(null);
+                                      }}
+                                    >
+                                      {p.name}
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
                           <input
                             className="input"
                             placeholder="Qty"
@@ -2004,33 +2021,33 @@ export default function SalesForm() {
                             />
                             {openProductIndex ===
                               `pi-emp-${index}-${pIndex}` && (
-                              <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
-                                {inventory
-                                  .filter((p) =>
-                                    p.name
-                                      .toLowerCase()
-                                      .includes(
-                                        (prod.name || "").toLowerCase(),
-                                      ),
-                                  )
-                                  .slice(0, 10)
-                                  .map((p) => (
-                                    <div
-                                      key={p.id}
-                                      className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
-                                      onMouseDown={() => {
-                                        const updated = [...form.pis];
-                                        updated[index].products[pIndex].name =
-                                          p.name;
-                                        setForm({ ...form, pis: updated });
-                                        setOpenProductIndex(null);
-                                      }}
-                                    >
-                                      {p.name}
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
+                                <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
+                                  {inventory
+                                    .filter((p) =>
+                                      p.name
+                                        .toLowerCase()
+                                        .includes(
+                                          (prod.name || "").toLowerCase(),
+                                        ),
+                                    )
+                                    .slice(0, 10)
+                                    .map((p) => (
+                                      <div
+                                        key={p.id}
+                                        className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
+                                        onMouseDown={() => {
+                                          const updated = [...form.pis];
+                                          updated[index].products[pIndex].name =
+                                            p.name;
+                                          setForm({ ...form, pis: updated });
+                                          setOpenProductIndex(null);
+                                        }}
+                                      >
+                                        {p.name}
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
 
                             <input
                               className="input w-28"
@@ -2198,33 +2215,33 @@ export default function SalesForm() {
                             />
                             {openProductIndex ===
                               `sale-emp-${index}-${pIndex}` && (
-                              <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
-                                {inventory
-                                  .filter((p) =>
-                                    p.name
-                                      .toLowerCase()
-                                      .includes(
-                                        (prod.name || "").toLowerCase(),
-                                      ),
-                                  )
-                                  .slice(0, 10)
-                                  .map((p) => (
-                                    <div
-                                      key={p.id}
-                                      className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
-                                      onMouseDown={() => {
-                                        const updated = [...form.sales];
-                                        updated[index].products[pIndex].name =
-                                          p.name;
-                                        setForm({ ...form, sales: updated });
-                                        setOpenProductIndex(null);
-                                      }}
-                                    >
-                                      {p.name}
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
+                                <div className="absolute left-0 top-full z-30 bg-white border rounded-lg shadow w-full max-h-48 overflow-y-auto mt-1">
+                                  {inventory
+                                    .filter((p) =>
+                                      p.name
+                                        .toLowerCase()
+                                        .includes(
+                                          (prod.name || "").toLowerCase(),
+                                        ),
+                                    )
+                                    .slice(0, 10)
+                                    .map((p) => (
+                                      <div
+                                        key={p.id}
+                                        className="px-3 py-2 cursor-pointer hover:bg-indigo-50"
+                                        onMouseDown={() => {
+                                          const updated = [...form.sales];
+                                          updated[index].products[pIndex].name =
+                                            p.name;
+                                          setForm({ ...form, sales: updated });
+                                          setOpenProductIndex(null);
+                                        }}
+                                      >
+                                        {p.name}
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
                             <input
                               className="input"
                               placeholder="Qty"
@@ -2474,68 +2491,69 @@ export default function SalesForm() {
                           {/* EDIT BUTTON (FOR ADMIN OR THE EMPLOYEE WHO CREATED IT) */}
                           {(role === "ADMIN" ||
                             (role === "EMPLOYEE" && (e.employeeId === employeeId || (employeeName && e.employeeName?.trim() === employeeName.trim())))) && (
-                            <button
-                              onClick={() => {
-                                setEditId(e.id);
-                                setEditItem(e);
-                                if (role !== "EMPLOYEE") {
-                                  setOpenForm(true);
-                                  setEntryEmployeeId(e.employeeId || "");
-                                  setEntryEmployeeName(e.employeeName || "");
-                                }
+                              <button
+                                onClick={() => {
+                                  setEditId(e.id);
+                                  setEditItem(e);
+                                  if (role !== "EMPLOYEE") {
+                                    setOpenForm(true);
+                                    setEntryEmployeeId(e.employeeId || "");
+                                    setEntryEmployeeName(e.employeeName || "");
+                                  }
 
-                                setForm({
-                                  ptDate: e.ptDate
-                                    ? (typeof e.ptDate.toDate === "function" ? e.ptDate.toDate() : new Date(e.ptDate))
+                                  setForm({
+                                    ptDate: e.ptDate
+                                      ? e.ptDate
+                                        .toDate()
                                         .toISOString()
                                         .split("T")[0]
-                                    : "",
-                                  piCount: e.piCount || e.pis?.length || "",
-                                  saleCount: e.sales?.length || "",
-                                  calls: e.calls || "",
-                                  remark: e.remark || "",
-                                  pis: e.pis || [],
-                                  sales: (e.sales || []).map((s) => ({
-                                    ...s,
-                                    products: Array.isArray(s.products)
-                                      ? s.products
-                                      : typeof s.products === "string"
+                                      : "",
+                                    piCount: e.piCount || e.pis?.length || "",
+                                    saleCount: e.sales?.length || "",
+                                    calls: e.calls || "",
+                                    remark: e.remark || "",
+                                    pis: e.pis || [],
+                                    sales: (e.sales || []).map((s) => ({
+                                      ...s,
+                                      products: Array.isArray(s.products)
                                         ? s.products
+                                        : typeof s.products === "string"
+                                          ? s.products
                                             .split(",")
                                             .map((item) => {
                                               const match =
                                                 item.match(/(.+)\((\d+)\)/);
                                               return match
                                                 ? {
-                                                    name: match[1].trim(),
-                                                    qty: Number(match[2]),
-                                                  }
+                                                  name: match[1].trim(),
+                                                  qty: Number(match[2]),
+                                                }
                                                 : {
-                                                    name: item.trim(),
-                                                    qty: 0,
-                                                  };
+                                                  name: item.trim(),
+                                                  qty: 0,
+                                                };
                                             })
-                                        : [],
+                                          : [],
 
-                                    piConfirmDate: s.piConfirmDate
-                                      ? (typeof s.piConfirmDate.toDate === "function" ? s.piConfirmDate.toDate() : new Date(s.piConfirmDate))
+                                      piConfirmDate: s.piConfirmDate
+                                        ? (typeof s.piConfirmDate.toDate === "function" ? s.piConfirmDate.toDate() : new Date(s.piConfirmDate))
                                           .toISOString()
                                           .split("T")[0]
-                                      : "",
-                                  })),
-                                });
-
-                                setTimeout(() => {
-                                  formRef.current?.scrollIntoView({
-                                    behavior: "smooth",
+                                        : "",
+                                    })),
                                   });
-                                }, 100);
-                              }}
-                              className="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium shadow-2xs transition-colors"
-                            >
-                              Edit
-                            </button>
-                          )}
+
+                                  setTimeout(() => {
+                                    formRef.current?.scrollIntoView({
+                                      behavior: "smooth",
+                                    });
+                                  }, 100);
+                                }}
+                                className="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded font-medium shadow-2xs transition-colors"
+                              >
+                                Edit
+                              </button>
+                            )}
 
                           {/* DELETE BUTTON (ADMIN ONLY) */}
                           {role === "ADMIN" && (
@@ -2599,15 +2617,15 @@ export default function SalesForm() {
                               <div className="p-2">
                                 {Array.isArray(p.products)
                                   ? p.products.map((prod, idx) => (
-                                      <div key={idx}>{prod.name}</div>
-                                    ))
+                                    <div key={idx}>{prod.name}</div>
+                                  ))
                                   : "-"}
                               </div>
                               <div className="p-2">
                                 {Array.isArray(p.products)
                                   ? p.products.map((prod, idx) => (
-                                      <div key={idx}>{prod.qty}</div>
-                                    ))
+                                    <div key={idx}>{prod.qty}</div>
+                                  ))
                                   : 0}
                               </div>
                             </div>
@@ -2636,8 +2654,8 @@ export default function SalesForm() {
                               <div className="p-2 border-r">
                                 {s.piConfirmDate
                                   ? s.piConfirmDate
-                                      .toDate()
-                                      .toLocaleDateString()
+                                    .toDate()
+                                    .toLocaleDateString()
                                   : "-"}
                               </div>
                               <div className="p-2 border-r">
@@ -2651,16 +2669,16 @@ export default function SalesForm() {
                               <div className="p-2">
                                 {Array.isArray(s.products)
                                   ? s.products.map((prod, idx) => (
-                                      <div key={idx}>{prod.name}</div>
-                                    ))
+                                    <div key={idx}>{prod.name}</div>
+                                  ))
                                   : "-"}
                               </div>
 
                               <div className="p-2">
                                 {Array.isArray(s.products)
                                   ? s.products.map((prod, idx) => (
-                                      <div key={idx}>{prod.qty}</div>
-                                    ))
+                                    <div key={idx}>{prod.qty}</div>
+                                  ))
                                   : 0}
                               </div>
                             </div>
@@ -2674,15 +2692,33 @@ export default function SalesForm() {
 
                       {/* ================= DAILY ACTIVITY ================= */}
                       <div className="border rounded-lg">
-                        <div className="grid grid-cols-2 bg-gray-100 font-semibold text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-4 bg-gray-100 font-semibold text-sm">
                           <div className="p-2 border-r">Today Calls Made</div>
-                          <div className="p-2">Total Sale Today</div>
+                          <div className="p-2 border-r">Total Sale Today</div>
+                          <div className="p-2 border-r">Refund Amount</div>
+                          <div className="p-2">Net Sale Today</div>
                         </div>
-                        <div className="grid grid-cols-2">
+                        <div className="grid grid-cols-2 md:grid-cols-4">
                           <div className="p-2 border-r">{e.calls || 0}</div>
-                          <div className="p-2 font-semibold">
+                          <div className="p-2 border-r font-semibold">
                             {e.currency === "USD" ? "$" : "₹"}
                             {Number(e.saleAmount || 0).toLocaleString()}
+                          </div>
+                          <div className="p-2 border-r font-semibold text-red-600">
+                            {Number(e.refund || 0) > 0 ? (
+                              <span>
+                                {e.currency === "USD" ? "$" : "₹"}
+                                {Number(e.refund || 0).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">₹0</span>
+                            )}
+                          </div>
+                          <div className="p-2 font-bold text-emerald-700">
+                            {e.currency === "USD" ? "$" : "₹"}
+                            {(
+                              Number(e.saleAmount || 0) - Number(e.refund || 0)
+                            ).toLocaleString()}
                           </div>
                         </div>
                       </div>

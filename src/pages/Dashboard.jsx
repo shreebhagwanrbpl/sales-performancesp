@@ -7,6 +7,7 @@ import {
   BanknotesIcon,
   CheckBadgeIcon,
   ArrowDownTrayIcon,
+  ArrowUturnLeftIcon,
 } from "@heroicons/react/24/outline";
 
 import {
@@ -305,6 +306,7 @@ export default function Dashboard() {
     negative: 0,
     monthlyPI: 0,
     projectedScore: 0,
+    refund: 0,
   });
 
   useEffect(() => {
@@ -894,8 +896,11 @@ export default function Dashboard() {
 
       snap.forEach((d) => {
         const data = d.data();
+        const gross = Number(data.saleAmount ?? data.amount ?? 0);
+        const refundAmt = Number(data.refund || 0);
 
-        sale += data.saleAmount ?? data.amount ?? 0;
+        sale += (gross - refundAmt);
+        refund += refundAmt;
         calls += data.calls || 0;
         positive += data.feedback === "Interested" ? 1 : 0;
         negative += data.feedback === "Not Interested" ? 1 : 0;
@@ -910,6 +915,7 @@ export default function Dashboard() {
         negative,
         monthlyPI,
         projectedScore,
+        refund,
       });
     });
 
@@ -1032,20 +1038,25 @@ export default function Dashboard() {
     const unsub = onSnapshot(q, (snap) => {
       let totalSale = 0;
       let totalCalls = 0;
+      let totalRefund = 0;
       let posCalls = 0;
 
       const achievedMap = {};
       const callsMap = {};
       const posMap = {};
+      const refundMap = {};
 
       snap.forEach((d) => {
         const data = d.data();
-        const amt = Number(data.saleAmount ?? data.amount ?? 0);
+        const gross = Number(data.saleAmount ?? data.amount ?? 0);
+        const refundAmt = Number(data.refund || 0);
+        const amt = gross - refundAmt;
         const callsVal = data.calls !== undefined && data.calls !== null ? String(data.calls).replace(/,/g, "").trim() : "0";
         const callsCount = Number(callsVal) || 0;
         const isPos = data.feedback === "Interested" || data.feedback === "Positive";
 
         totalSale += amt;
+        totalRefund += refundAmt;
         totalCalls += callsCount;
         if (isPos) posCalls++;
 
@@ -1055,12 +1066,14 @@ export default function Dashboard() {
 
         if (empId) {
           achievedMap[empId] = (achievedMap[empId] || 0) + amt;
+          refundMap[empId] = (refundMap[empId] || 0) + refundAmt;
           callsMap[empId] = (callsMap[empId] || 0) + callsCount;
           if (isPos) posMap[empId] = (posMap[empId] || 0) + 1;
         }
 
         if (normName) {
           achievedMap[normName] = (achievedMap[normName] || 0) + amt;
+          refundMap[normName] = (refundMap[normName] || 0) + refundAmt;
           callsMap[normName] = (callsMap[normName] || 0) + callsCount;
           if (isPos) posMap[normName] = (posMap[normName] || 0) + 1;
         }
@@ -1070,6 +1083,7 @@ export default function Dashboard() {
       setStats((prev) => ({
         ...prev,
         sale: totalSale,
+        refund: totalRefund,
         calls: totalCalls,
         positive: posCalls,
       }));
@@ -1080,6 +1094,7 @@ export default function Dashboard() {
           return {
             ...e,
             achieved: achievedMap[e.employeeId] || achievedMap[normName] || 0,
+            refund: refundMap[e.employeeId] || refundMap[normName] || 0,
             calls: callsMap[e.employeeId] || callsMap[normName] || 0,
             positive: posMap[e.employeeId] || posMap[normName] || 0,
           };
@@ -1178,7 +1193,9 @@ export default function Dashboard() {
       neg = 0;
 
     rows.forEach((r) => {
-      sale += r.saleAmount ?? r.amount ?? 0;
+      const gross = Number(r.saleAmount ?? r.amount ?? 0);
+      const refund = Number(r.refund || 0);
+      sale += (gross - refund);
       calls += r.calls || 0;
       if (r.feedback === "Interested") pos++;
       if (r.feedback === "Not Interested") neg++;
@@ -1195,16 +1212,20 @@ export default function Dashboard() {
       alert("No data available for selected range");
       return;
     }
-    const sheetData = rows.map((r) => ({
-      Date: r.createdAt?.toDate().toLocaleDateString(),
-      Employee: r.employeeName || r.employeeEmail || r.employeeId,
-      // Payment: r.saleAmount ?? r.amount ?? 0,
-"PI Number":
-  r.sales?.map((s) => s.piNo).join(", ") || "-",
-      Sale: r.saleAmount ?? r.amount ?? 0,
-      Calls: r.calls || 0,
-      Feedback: r.feedback || "-",
-    }));
+    const sheetData = rows.map((r) => {
+      const gross = Number(r.saleAmount ?? r.amount ?? 0);
+      const refund = Number(r.refund || 0);
+      return {
+        Date: r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : "",
+        Employee: r.employeeName || r.employeeEmail || r.employeeId,
+        "PI Number": r.sales?.map((s) => s.piNo).join(", ") || "-",
+        "Gross Sale": gross,
+        "Refund Amount": refund,
+        "Net Sale": gross - refund,
+        Calls: r.calls || 0,
+        Feedback: r.feedback || "-",
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(sheetData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Report");
@@ -1320,6 +1341,7 @@ export default function Dashboard() {
         percent,
         calls,
         perf,
+        refund: Number(stats.refund || 0),
         targetLabel: "Sales Team Target",
         achievedSubtext: "Selected range total",
         isFiltered: false,
@@ -1363,6 +1385,7 @@ export default function Dashboard() {
       empCalls > 0 && empPositive > 0
         ? Math.round((empPositive / empCalls) * 100)
         : empPercent;
+    const empRefund = Number(empStat?.refund || 0);
 
     return {
       target: empTarget,
@@ -1370,6 +1393,7 @@ export default function Dashboard() {
       percent: empPercent,
       calls: empCalls,
       perf: empPerf,
+      refund: empRefund,
       targetLabel: `${selectedEmpName.split(" ")[0]}'s Target`,
       achievedSubtext: `Achieved by ${selectedEmpName.split(" ")[0]}`,
       isFiltered: true,
@@ -1565,112 +1589,161 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 5 UNIFORM KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Card 1: Target */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              {rangeType === "DAILY"
-                ? "Daily Target"
-                : rangeType === "WEEK"
-                ? "Weekly Target"
-                : rangeType === "YEAR"
-                ? "Yearly Target"
-                : "Monthly Target"}
-            </p>
-            <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/80">
-              <BanknotesIcon className="w-5 h-5" />
+      {/* TOP METRICS SECTION: 2 LARGE CARDS (TARGET & ACHIEVED) + 2x2 GRID (REFUND, ACHIEVEMENT %, CALLS, PERFORMANCE) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* LEFT: 2 MAIN CARDS (Target & Achieved) */}
+        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Card 1: Target */}
+          <div className="bg-gradient-to-br from-indigo-50/40 via-white to-slate-50/50 rounded-2xl border border-indigo-100/90 shadow-xs p-5 hover:shadow-md hover:border-indigo-200 transition-all flex flex-col justify-between space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-900/70">
+                  {rangeType === "DAILY"
+                    ? "Daily Target"
+                    : rangeType === "WEEK"
+                    ? "Weekly Target"
+                    : rangeType === "YEAR"
+                    ? "Yearly Target"
+                    : "Monthly Target"}
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Sales Goal Allocation</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-indigo-100/80 text-indigo-700 border border-indigo-200/60 shadow-2xs">
+                <BanknotesIcon className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="my-auto py-1">
+              <h3 className="text-2xl lg:text-3xl font-black text-indigo-900 tracking-tight">
+                ₹{Number(activeKpiData.target || 0).toLocaleString("en-IN")}
+              </h3>
+              <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-100/70 px-2.5 py-0.5 rounded-md border border-indigo-200/60 truncate max-w-full">
+                  {activeKpiData.targetLabel}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2.5 border-t border-indigo-100/60 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+              <span>Target Standard</span>
+              <span className="text-indigo-600 font-bold">100% Benchmark</span>
             </div>
           </div>
 
-          <div>
-            <h3 className="text-xl lg:text-2xl font-black text-indigo-700 tracking-tight">
-              ₹{Number(activeKpiData.target || 0).toLocaleString("en-IN")}
-            </h3>
-            <span className="mt-1 inline-block text-[10px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 truncate max-w-full">
-              {activeKpiData.targetLabel}
-            </span>
+          {/* Card 2: Achieved */}
+          <div className="bg-gradient-to-br from-emerald-50/40 via-white to-slate-50/50 rounded-2xl border border-emerald-100/90 shadow-xs p-5 hover:shadow-md hover:border-emerald-200 transition-all flex flex-col justify-between space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-900/70">
+                  Achieved ({rangeType.toLowerCase()})
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Net Revenue Generated</p>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-100/80 text-emerald-700 border border-emerald-200/60 shadow-2xs">
+                <ArrowTrendingUpIcon className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="my-auto py-1">
+              <h3 className="text-2xl lg:text-3xl font-black text-emerald-600 tracking-tight">
+                ₹{Number(activeKpiData.achieved || 0).toLocaleString("en-IN")}
+              </h3>
+              {rangeType === "YEAR" && excelCompanyTotal > 0 && !activeKpiData.isFiltered && (
+                <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
+                  + ₹{excelCompanyTotal.toLocaleString("en-IN")} from Excel
+                </p>
+              )}
+              <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">{activeKpiData.achievedSubtext}</p>
+            </div>
+
+            <div className="pt-2 border-t border-emerald-100/60">
+              <div className="flex justify-between items-center text-[11px] font-semibold mb-1">
+                <span className="text-slate-500">Target Progress</span>
+                <span className="text-emerald-700 font-extrabold">{activeKpiData.percent}%</span>
+              </div>
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/40">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(activeKpiData.percent, 100)}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Card 2: Achieved */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Achieved ({rangeType.toLowerCase()})
-            </p>
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100/80">
-              <ArrowTrendingUpIcon className="w-5 h-5" />
+        {/* RIGHT: 2x2 GRID (Refund, Achievement %, Total Calls, Performance) */}
+        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Card 1: Refund */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Refund</p>
+              <div className="p-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100/80">
+                <ArrowUturnLeftIcon className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl lg:text-2xl font-black text-rose-600 tracking-tight">
+                ₹{Number(activeKpiData.refund || 0).toLocaleString("en-IN")}
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">Total refund for range</p>
             </div>
           </div>
 
-          <div>
-            <h3 className="text-xl lg:text-2xl font-black text-emerald-600 tracking-tight">
-              ₹{Number(activeKpiData.achieved || 0).toLocaleString("en-IN")}
-            </h3>
-            {rangeType === "YEAR" && excelCompanyTotal > 0 && !activeKpiData.isFiltered && (
-              <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
-                + ₹{excelCompanyTotal.toLocaleString("en-IN")} from Excel
+          {/* Card 2: Achievement % */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Achievement %</p>
+              <div className="p-2 rounded-xl bg-green-50 text-green-600 border border-green-100/80">
+                <CheckBadgeIcon className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xl lg:text-2xl font-black text-green-600 tracking-tight">
+                {activeKpiData.percent}%
               </p>
-            )}
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">{activeKpiData.achievedSubtext}</p>
-          </div>
-        </div>
-
-        {/* Card 3: Achievement % */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Achievement %</p>
-            <div className="p-2 rounded-xl bg-green-50 text-green-600 border border-green-100/80">
-              <CheckBadgeIcon className="w-5 h-5" />
+              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200/40">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full"
+                  style={{ width: `${Math.min(activeKpiData.percent, 100)}%` }}
+                />
+              </div>
             </div>
           </div>
 
-          <div>
-            <p className="text-xl lg:text-2xl font-black text-green-600 tracking-tight">
-              {activeKpiData.percent}%
-            </p>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200/40">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full"
-                style={{ width: `${Math.min(activeKpiData.percent, 100)}%` }}
-              />
+          {/* Card 3: Total Calls */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Calls</p>
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80">
+                <PhoneIcon className="w-5 h-5" />
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Card 4: Total Calls */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Calls</p>
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80">
-              <PhoneIcon className="w-5 h-5" />
+            <div>
+              <h2 className="text-xl lg:text-2xl font-black text-blue-600 tracking-tight">
+                {activeKpiData.calls}
+              </h2>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">Logged customer calls</p>
             </div>
           </div>
 
-          <div>
-            <h2 className="text-xl lg:text-2xl font-black text-blue-600 tracking-tight">
-              {activeKpiData.calls}
-            </h2>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Logged customer calls</p>
-          </div>
-        </div>
-
-        {/* Card 5: Performance */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
-          <div className="flex justify-between items-start">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Performance</p>
-            <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100/80">
-              <ChartBarIcon className="w-5 h-5" />
+          {/* Card 4: Performance */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 hover:shadow-md transition-all flex flex-col justify-between space-y-3">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Performance</p>
+              <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100/80">
+                <ChartBarIcon className="w-5 h-5" />
+              </div>
             </div>
-          </div>
 
-          <div>
-            <h2 className="text-xl lg:text-2xl font-black text-purple-600 tracking-tight">
-              {activeKpiData.perf}%
-            </h2>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Conversion score</p>
+            <div>
+              <h2 className="text-xl lg:text-2xl font-black text-purple-600 tracking-tight">
+                {activeKpiData.perf}%
+              </h2>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">Conversion score</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1925,36 +1998,37 @@ export default function Dashboard() {
         <div className="col-span-12 lg:col-span-4">
         {focusedEmployee ? (
           (() => {
-            // ======= COMMON DATA (ONE TIME) =======
+            // ======= SPECIFIC EMPLOYEE DATA =======
             const emp = employeeStats.find(
-              (e) => e.employeeId === focusedEmployee.employeeId,
+              (e) =>
+                e.employeeId === focusedEmployee.employeeId ||
+                (focusedEmployee.name &&
+                  getFirstName(e.name) === getFirstName(focusedEmployee.name))
             );
 
-            // const effectiveTarget = getEmployeeEffectiveTarget(emp?.target || 0,);
-            const effectiveTarget = getRangeTarget(emp?.target || 0);
+            const baseTarget = emp?.target || 0;
+            const effectiveTarget = getRangeTarget(baseTarget);
 
-            // Firebase sale
-            const currentSale = Number(stats.sale || 0);
+            // Firebase achieved sale for this specific employee in selected range
+            const currentSale = Number(emp?.achieved || 0);
 
-            // const excelSale =
-            //   excelTotalMap.get(normalize(focusedEmployee?.name || "")) || 0;
-            // const excelSale = rangeType === "YEAR" ? excelTotalMap.get(normalize(focusedEmployee?.name || "")) || 0: 0;
+            const normName = getFirstName(focusedEmployee?.name || "");
             const excelSale =
-              rangeType === "YEAR"
-                ? excelTotalMap.get(
-                    getFirstName(focusedEmployee?.name || ""),
-                  ) || 0
+              rangeType === "YEAR" && selectedFY === "2025-26" && normName
+                ? Number(excelTotalMap.get(normName) || 0)
                 : 0;
 
-            // Total sale
+            // Total sale for this employee
             const totalSale = currentSale + excelSale;
 
-            // Percentage
+            // Percentage for this employee
             const focusedPercent = effectiveTarget
               ? Math.round((totalSale / effectiveTarget) * 100)
               : 0;
 
             const isTargetAchieved = focusedPercent >= 100;
+            const empCalls = Number(emp?.calls || 0);
+            const empRefund = Number(emp?.refund || 0);
 
             // ======= UI =======
             return (
@@ -2057,8 +2131,14 @@ export default function Dashboard() {
                   />
 
                   <StatBox
+                    label="Refund"
+                    value={`₹${empRefund.toLocaleString("en-IN")}`}
+                    icon={<ArrowUturnLeftIcon className="w-4 h-4 text-rose-600" />}
+                  />
+
+                  <StatBox
                     label="Calls"
-                    value={stats.calls}
+                    value={empCalls}
                     icon={<PhoneIcon className="w-4 h-4 text-blue-600" />}
                   />
                 </div>
@@ -2075,6 +2155,11 @@ export default function Dashboard() {
               <Row
                 label="Total Sale"
                 value={`₹${companySummarySale.toLocaleString("en-IN")}`}
+              />
+
+              <Row
+                label="Total Refund"
+                value={`₹${Number(stats.refund || 0).toLocaleString("en-IN")}`}
               />
 
               <Row label="Total Calls" value={stats.calls} />

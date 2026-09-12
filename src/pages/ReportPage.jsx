@@ -156,7 +156,9 @@ export default function ReportPage() {
 
       //
 
-      const amount = r.saleAmount || r.amount || 0;
+      const gross = Number(r.saleAmount || r.amount || 0);
+      const refund = Number(r.refund || 0);
+      const amount = gross - refund;
       grouped[key].total += amount;
 
       // 🔥 FIXED DATE PARSING
