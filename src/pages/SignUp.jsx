@@ -72,11 +72,13 @@ await setDoc(doc(db, "users", res.user.uid), {
       console.error(err);
 
       if (err.code === "auth/email-already-in-use") {
-        setError("Email already registered");
+        setError("Email is already registered. Please login.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Invalid email address format (e.g. name@gmail.com)");
       } else if (err.code === "auth/weak-password") {
-        setError("Password must be at least 6 characters");
+        setError("Password must be at least 6 characters long");
       } else {
-        setError("Signup failed. Try again.");
+        setError(err.message || "Signup failed. Try again.");
       }
     } finally {
       setLoading(false);
@@ -91,42 +93,54 @@ await setDoc(doc(db, "users", res.user.uid), {
           <h2 className="text-2xl font-bold mb-1">Create Account 😎</h2>
           <p className="text-gray-500 mb-6">Signup to continue</p>
 
-          <input
-            className="input mb-3"
-            placeholder="Full Name"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-          />
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
+            <input
+              className="input w-full"
+              placeholder="e.g. Rahul Sharma"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+            />
+          </div>
 
-          <input
-            className="input mb-3"
-            placeholder="Email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-          />
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Email Address</label>
+            <input
+              className="input w-full"
+              type="email"
+              placeholder="e.g. name@gmail.com"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+            />
+          </div>
 
-          <input
-            className="input mb-3"
-            type="password"
-            placeholder="Password"
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-          />
+          <div className="mb-3">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Password</label>
+            <input
+              className="input w-full"
+              type="password"
+              placeholder="Password (min 6 characters)"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+            />
+          </div>
 
-          <select
-            className="input mb-4"
-            name="role"
-            value={form.role}
-            onChange={handleChange}
-          >
-            <option value="EMPLOYEE">Employee</option>
-            <option value="TL">Team Leader</option>
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Role</label>
+            <select
+              className="input w-full"
+              name="role"
+              value={form.role}
+              onChange={handleChange}
+            >
+              <option value="EMPLOYEE">Employee</option>
               <option value="PURCHASING">Purchasing</option>
-            <option value="ADMIN">Admin</option>
-          </select>
+              <option value="ADMIN">Admin (Manager)</option>
+            </select>
+          </div>
 
           <button
             onClick={handleSignup}

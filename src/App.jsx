@@ -35,6 +35,9 @@ import RajDistrict from "./pages/RajbiosisLimited/district";
 import RajQuery from "./pages/RajbiosisLimited/query";
 import ProductsApprovel from "./pages/ProductsApprovel";
 import EotmList from "./pages/EotmList";
+import ItemInquiry from "./pages/ItemInquiry";
+import VendorsPage from "./pages/VendorsPage";
+
 export default function App() {
   const role = localStorage.getItem("role") || "";
   return (
@@ -67,6 +70,12 @@ export default function App() {
         <Route path="/admin/assign-tl" element={<AdminAssignTL />} />
         <Route path="/purchaseform" element={<PurchaseForm />} />
         <Route path="/officeexpense" element={<OfficeExpense />} />
+
+        {/* PROCUREMENT PROTOTYPE ROUTES */}
+        <Route path="/procurement/item-inquiry" element={<ItemInquiry />} />
+        <Route path="/procurement/vendors" element={<VendorsPage />} />
+        <Route path="/item-inquiry" element={<ItemInquiry />} />
+        <Route path="/vendors" element={<VendorsPage />} />
 
         <Route path="reports" element={<Report />} />
         <Route

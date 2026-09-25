@@ -76,7 +76,7 @@ switch (userData.role) {
     break;
 
   case "PURCHASING":
-    navigate("/purchaseform");
+    navigate("/procurement/item-inquiry");
     break;
 
   default:
